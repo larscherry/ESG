@@ -1,105 +1,119 @@
 # Decisions
 
-## 1. Ingestion Mechanism: CSV Upload for All Three Sources
+## Architecture
 
-**Chosen**: File upload (CSV) via Django REST endpoint.
+### Session auth over tokens
+We chose Django session authentication with httpOnly cookies instead of the
+original TokenAuthentication + localStorage. Reason: httpOnly cookies are
+inaccessible to JavaScript, eliminating XSS token theft. The tradeoff is that
+SPA requests need CSRF token handling, which we added via `X-CSRFToken` header.
 
-**Why**: All three sources in the real world expose data through export mechanisms that produce structured files. SAP exports via MB5B/ALV grid to spreadsheet. Utility portals support Green Button CSV download. Concur/Navan provide scheduled CSV extracts via SFTP. An API-first approach would require OAuth credentials, per-provider integration code, and rate-limit handling — all irrelevant in a prototype where we control the data.
+**What I'd ask the PM**: "Do any external systems (scripts, API clients) need
+token-based access? If so, we should keep TokenAuthentication as a secondary
+option for API keys while keeping session auth for the browser SPA."
 
-**What I'd ask the PM**: "Do any of these sources require real-time ingestion, or is daily batch sufficient? If batch, CSV is fine. If real-time, we need API integration and that changes the timeline."
+### ReadOnlyModelViewSet over permission classes
+We restricted API surface to read-only by default (`ReadOnlyModelViewSet` on
+all data views) rather than implementing per-object permission classes. Reason:
+safer to limit what any user can do than to trust permissions are configured
+correctly. Write actions (upload, approve, reject, flag, lock, batch actions)
+are gated behind explicit `@action` endpoints.
 
-## 2. SAP Export Format: MB5B Flat File (CSV)
+**What I'd ask the PM**: "Is there a business need for users to edit records
+in bulk (e.g., edit quantity or category)? We'd need additional endpoints and
+a UI for inline editing."
 
-**Chosen**: Model the SAP data as a CSV export from transaction MB5B (Stocks for Posting Date).
+### Organization query param → request.organization middleware
+The original design let clients pass `?organization=` to scope queries. We
+replaced this with a middleware that reads the user's organization from their
+`UserProfile` and sets `request.organization`. Reason: a client-supplied org ID
+makes multi-tenant isolation a frontend responsibility, which is a security
+risk. The middleware approach guarantees isolation at the server level.
 
-**Why**: MB5B is the standard SAP MM transaction for inventory movements over time. It exports as an ALV grid that can be saved as spreadsheet/CSV. This is how hundreds of SAP shops send data to non-SAP systems. IDocs are more structured but require EDI middleware setup. OData requires S/4HANA or SAP Gateway. BAPIs require RFC calls. The flat file is the lowest-friction integration pattern and matches what Breathe ESG would actually receive from a client.
+**What I'd ask the PM**: "Should superusers/staff be able to impersonate other
+organizations for support purposes? If yes, we can add an admin override that
+only staff can use."
 
-**Subset handled**:
-- Movement types 101 (goods receipt), 102 (reversal), 261 (goods issue to cost center), 321 (bulk fuel issue to plant)
-- Materials with material groups FUEL, NG, MFG, UTIL
-- German column headers (Werk, Buch.datum) and English (Plant, BUDAT)
-- Units: L, GAL, KG, kWh, STK
+### Emission factor DB-first, hardcoded fallback
+`get_emission_factor()` queries the `EmissionFactor` table first, then falls
+back to a hardcoded dict in `_FALLBACK_EMISSION_FACTORS`. Reason: admins can
+update factors via Django admin without deploying code, but the hardcoded
+fallback guarantees the app never returns a 500 if the table is empty.
 
-**Ignored**: Batch management, serial numbers, pipeline materials, consignment stock, customs/MID codes, WM-linked movements. These add complexity without changing the carbon calculation.
+**What I'd ask the PM**: "Should we add a versioning/review workflow for
+emission factor changes? Currently an admin can change a factor silently and
+all historical calculations are affected."
 
-## 3. Utility Format: Green Button CSV (US Standard)
+---
 
-**Chosen**: Model utility data after the Green Button Download My Data CSV format.
+## Source Parsing
 
-**Why**: Green Button is the de facto standard for US utility data export, mandated by many state PUCs. PECO, SCE, BGE, and dozens of other utilities support it. The format is simple: meter ID, start/end date, usage, units, cost, and optional notes flagging estimated readings.
+### Which fields we handle from each source
 
-**Why not PDF**: PDF parsing is fragile per-utility format, requires OCR, and produces uncertain results. Every utility formats their PDF differently. CSV is the correct ingestion path for commercial accounts; PDF is what you fall back to for residential where portals don't exist.
+| Source | Handled | Ignored |
+|--------|---------|---------|
+| **sap_fuel** | `Material`, `Menge`, `MEINS`, `BUDAT`, `material_description`, `Plant`, `MAKTX`, `MATL_GROUP`, `movement_type` | `SGTXT`, `CHARG`, `BWTAR`, `WERKS` (plant is used, `WERKS` is an alias) |
+| **utility_electricity** | `Meter ID`, `TYPE`, `START DATE`, `END DATE`, `USAGE`, `UNITS` | `COST`, `NOTES` (stored in raw_data but not parsed) |
+| **corporate_travel** | `Employee`, `ExpenseType`, `TransactionDate`, `Amount`, `Currency`, `Origin`, `Destination`, `Description`, `Quantity`, `Nights` | `CheckIn`/`CheckOut` (hotel dates stored but not parsed separately), `Meals` expense types |
 
-**Why not API**: Very few utilities offer APIs for customer usage data, and those that do (e.g., Oracle Utility Opower) require separate integration contracts.
+We extract the minimum set of fields needed to determine: quantity, unit, date,
+description, and (for travel) origin/destination. All other fields are
+preserved in `raw_data` JSONField for future use.
 
-**Billing periods handled**: Monthly billing cycles that don't align with calendar months (modeled as start/end date pairs). Interval data (hourly/15-min) would be a future addition.
+### Flight distance estimation
+We use a hardcoded lookup table of ~50 known airport pairs (e.g., JFK→LHR =
+5,550 km) rather than querying a geocoding API. Reason: offline-capable, no
+API costs, instant. Pairs not in the table use a fallback category.
 
-## 4. Corporate Travel Format: Concur Expense CSV
+**What I'd ask the PM**: "Should we integrate a flight distance API like
+Great Circle Mapper or Google Maps for unknown routes? This would improve
+accuracy but add latency and cost."
 
-**Chosen**: Model travel data after a Concur expense report extract CSV.
+### Date parsing
+We accept `YYYY-MM-DD`, `DD.MM.YYYY`, `MM/DD/YYYY`, and `MONTH YYYY` (German
+abbreviations like "Jan 2024"). The original SAP sample used month-only dates
+(`01.2024`), which we changed to `01.01.2024` in the sample data because
+month-only dates cannot be accurately placed without assuming day 1.
 
-**Why**: Concur dominates corporate T&E. Its expense extract (available via SAE or Financial Integration API) produces CSV files with expense type codes (AIRFR, HOTEL, CAR, BUSML), transaction amounts, dates, and optional origin/destination. Navan (TripActions) similarly supports CSV extracts via SFTP.
+**What I'd ask the PM**: "How should we handle dates with only month and year?
+Assume day 1, or flag them for manual review?"
 
-**Categories handled**:
-- Airfare (AIRFR) → flight emission categories based on distance
-- Hotel (HOTEL) → per-night emission factor
-- Car rental (CAR_RENTAL) → estimated daily km
-- Rail (RAIL) → per-km emission factor
-- Bus (BUS) → per-km emission factor
-- Meals/Other → spend-based estimation fallback
+---
 
-**Distance estimation**: Airport pairs (JFK→LHR) use lookup table. Unknown pairs default to 1000km with a warning. Car rental defaults to 50km/day. These are flagged as "estimated" for analyst review.
+## Frontend
 
-## 5. Emission Factors: Embedded in Code (Not DB in Prototype)
+### Local state over Redux/Zustand
+The app uses React `useState`/`useEffect` for all state management. No global
+store. Reason: the app has one primary user flow (upload → review → approve)
+with minimal cross-page state. A store would add complexity without benefit at
+this scale.
 
-**Chosen**: Hardcoded factor dictionary in the normalizer, backed by a DB table for reference.
+**What I'd ask the PM**: "If the app grows to support multi-user collaboration
+(live notifications, shared filters), we should introduce a state management
+solution."
 
-**Why**: The model has an EmissionFactor table, but the normalizer uses a hardcoded dict for speed and reliability. In production, the normalizer would query the DB. For the prototype, dict lookup is deterministic and avoids N+1 queries during batch ingestion.
+### Recharts over Chart.js/D3
+We chose Recharts for the analytics dashboard. Reason: it's React-native,
+declarative, and covers the chart types we need (bar, line, pie) without
+wrapping an imperative library.
 
-**Factors used**: DEFRA 2024 (UK government conversion factors) for fuels and travel, EPA eGRID 2023 (US average) for grid electricity. These are the two most widely accepted factor sources in corporate carbon accounting.
+---
 
-## 6. Unit Normalization: SI Base Units + Domain Units
+## Deployment
 
-**Chosen**: Normalize to liters (volume), kWh (energy), km (distance), nights (hotel), tonnes CO2e (emissions).
+### Render free tier over AWS/GCP
+We target Render's free tier (Python + PostgreSQL). Reason: zero-cost hosting,
+built-in PostgreSQL, automatic HTTPS, and simple `render.yaml` blueprint. The
+tradeoff is a 15-minute idle spin-down and 512 MB RAM limit.
 
-**Why**: These are the units used by emission factor databases. DEFRA publishes in litres and kWh. EPA eGRID publishes in kWh. Why reinvent: the carbon accounting industry has settled on these units.
+**What I'd ask the PM**: "Is the 15-second cold start acceptable for a demo,
+or should we budget for a paid tier ($7/mo basic) that eliminates it?"
 
-**Conversion approach**: Simple multiplication factors in the UNIT_NORMALIZATION_MAP dict. Natural gas in kg gets converted to kWh using 13.6 kWh/kg (a standard calorific value). This is flagged as a conversion warning so the analyst can verify.
+### build.sh compiles frontend inside Python environment
+The `build.sh` script installs Node via nvm, runs `npm ci`, builds the Vite
+frontend, then collects static files. Reason: single build command, no separate
+frontend hosting needed. The compiled assets are served by Django/Whitenoise.
 
-## 7. Suspicion Detection: Rule-Based
-
-**Chosen**: A set of hardcoded rules that flag records.
-
-**Why**: ML-based anomaly detection would be overengineered for known data quality issues. The rules target things we know are common in carbon data: wrong units (kWh for fuel), impossible quantities, estimated meter readings, impossible airport pairs, German date formats.
-
-**Rules implemented**:
-- Fuel records with energy units → suspicious
-- Extremely large quantities → suspicious
-- Estimated meter readings (from utility notes column) → suspicious
-- Unknown airport pairs → suspicious
-- Category/distance mismatch (short-haul label on long-haul distance) → suspicious
-- DD.MM.YYYY date format → suspicious (German export indicator)
-
-## 8. Review Workflow: Two-Level
-
-**Chosen**: Individual record actions + batch-level actions.
-
-**Why**: Some batches are clean and can be approved in one click. Others have individual problematic rows that need per-row treatment. The two-level workflow handles both: batch approve for clean SAP runs, per-row reject for the one bad row in a utility upload.
-
-**Locking**: Batch-level lock transitions all non-rejected records to "locked". Individual lock is also supported. A locked record can be unlocked (logged in audit trail) but not edited — editing would require creating a new version.
-
-## 9. Frontend: React SPA with Django Serving the Build
-
-**Chosen**: Single-page React app in /frontend, built to dist/, served by Django as static files via WhiteNoise.
-
-**Why**: Avoids CORS issues in production (same origin). Simplifies deployment to a single server. The build step runs at deploy time.
-
-**Why not Next.js/Gatsby**: Overkill for a dashboard with 3 pages. Vite + React is faster to build and deploy.
-
-## 10. Authentication: None in Prototype
-
-**Chosen**: No authentication. The API is open.
-
-**Why**: Authentication adds a signup/login flow, password management, and session handling that is orthogonal to the data model and ingestion pipeline. The prototype focuses on the core value: ingesting, normalizing, and reviewing carbon data.
-
-**What I'd add in production**: API key authentication for the upload endpoint (mapped to an Organization), Django session auth for the web UI, and role-based access (analyst vs auditor vs admin). All of these are Django/REST framework built-ins that bolt on without changing the data model.
+**What I'd ask the PM**: "For a production deployment with higher traffic,
+consider splitting frontend (Vercel/Netlify) and backend (Render/Fly) for
+independent scaling."

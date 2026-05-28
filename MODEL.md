@@ -1,71 +1,168 @@
 # Data Model
 
-## Core Entities
+## Overview
 
-### Organization (multi-tenancy)
-Every record is scoped to an `Organization`. This is the top-level tenant boundary. In production, every API call would be authenticated and scoped to an org; in the prototype, the org is selected implicitly from the DataSource.
+Eight models supporting a multi-tenant ESG data ingestion, normalization, and audit platform.
+
+```
+Organization ──┬── DataSource ── IngestionBatch ──┬── SourceRecord
+               │                                   └── NormalizedRecord
+               ├── AuditLog
+               └── UserProfile (→ User)
+
+EmissionFactor (global, no org)
+UnitConversion (global, no org)
+```
+
+---
+
+## Multi-Tenancy
+
+Each `UserProfile` links a Django `User` to exactly one `Organization`. Middleware
+sets `request.organization` on every request, and every viewset filters its
+queryset by that org. Staff users can see all orgs.
+
+---
+
+## Models
+
+### Organization
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `name` | CharField | Display name |
+| `slug` | SlugField, unique | URL-safe identifier |
+| `created_at` | DateTimeField, auto | |
+
+Granularity: a company/tenant. A single-org deployment has one row; multi-tenant
+adds rows per customer.
+
+### UserProfile
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `user` | OneToOneField → User | |
+| `organization` | ForeignKey → Organization | |
+
+Enforces which org a user sees. Created by `seed_sample_data`.
 
 ### DataSource
-Represents a configured data pipeline: SAP fuel, utility electricity, or corporate travel. Stores the `source_type` which determines the normalizer used during ingestion. The `config` JSON field would hold API endpoints, credentials, or schedule settings in production.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `organization` | ForeignKey → Organization | Scoping |
+| `source_type` | CharField | `sap_fuel`, `utility_electricity`, `corporate_travel` |
+| `name` | CharField | Human-readable label |
+| `config` | JSONField, default={} | Extensible per-source config |
+
+A source is a named integration (e.g. "SAP MM – Fuel & Procurement"). Each
+source belongs to one org.
 
 ### IngestionBatch
-A batch is one upload event. Tracks status through: `importing` → `staged` → `reviewing` → `approved` → `locked`. Counts passed/failed/suspicious rows at ingestion time so the dashboard doesn't need to recompute.
 
-### SourceRecord (immutable)
-The raw parsed row from the CSV, stored as `raw_data` (JSON). This is never modified — it is the source of truth for what was actually uploaded. The `raw_quantity`, `raw_unit`, `raw_date` fields are extracted during ingestion for quick reference but the full original row lives in `raw_data`.
+| Field | Type | Notes |
+|-------|------|-------|
+| `source` | ForeignKey → DataSource | |
+| `status` | CharField | `importing` → `staged` → `approved`/`locked` |
+| `total_records` | IntegerField | |
+| `passed_count` | IntegerField | Passed normalization |
+| `failed_count` | IntegerField | Failed normalization |
+| `suspicious_count` | IntegerField | Flagged as suspicious |
+| `uploaded_by` | CharField | Username from request |
 
-Fields:
-- `status`: staged | passed | failed | suspicious
-- `failure_reasons`: list of error strings for failed records
-- `validation_warnings`: list of warning strings for suspicious records
+A batch is one file upload. The status lifecycle tracks review progress.
 
-**Why immutability matters**: In an audit, you must be able to prove that the normalized record corresponds to an actual source document. If we allowed editing SourceRecords, an auditor could never trust the chain of custody.
+### SourceRecord
 
-### NormalizedRecord (derived, versioned)
-The output of the normalization pipeline. One SourceRecord produces one NormalizedRecord. Fields:
+| Field | Type | Notes |
+|-------|------|-------|
+| `batch` | ForeignKey → IngestionBatch | |
+| `row_number` | IntegerField | 1-based line in CSV |
+| `raw_data` | JSONField | Full original row (every column preserved) |
+| `data_source` | CharField | Source type denormalized for query performance |
+| `raw_quantity`, `raw_unit`, `raw_date`, `raw_description` | CharField/TextField | Pre-parsed raw values |
+| `status` | CharField | `staged`, `passed`, `failed`, `suspicious` |
+| `failure_reasons` | JSONField, default=[] | |
+| `validation_warnings` | JSONField, default=[] | |
 
-- **Scope & Category**: Determined by the normalizer based on source type and content. Scope 1 = direct fuel burn, Scope 2 = purchased electricity, Scope 3 = business travel & procurement.
-- **Quantity & Unit**: Normalized to standard units (liters, kWh, km, nights).
-- **CO2e**: Computed using emission factors from the `EmissionFactor` table.
-- **raw_values**: Snapshot of key raw fields for the diff view in the UI.
-- **Status**: needs_review → approved/rejected/flagged → locked.
-- **Version**: Increments on edit (not yet implemented — would be triggered by analyst correcting a value).
+The "source of truth" row – immutable snapshot of what the CSV contained.
+Every normalization result links back here via `NormalizedRecord.source_record`.
 
-### EmissionFactor
-Separate table decoupling factors from code. Each factor has a category, region, valid_from/valid_to date range, and source citation (e.g., "DEFRA 2024"). This means:
-- Factors can be updated without a deploy
-- Multiple regions can coexist (US eGRID vs EU JRC)
-- Historical factors are preserved for point-in-time recalculation
+### NormalizedRecord
 
-### UnitConversion
-Maps raw units to normalized units. For example, GAL → L (×3.78541), MWh → kWh (×1000), KG → kWh for natural gas (×13.6). Separated from code so new units can be added without a deploy.
+| Field | Type | Notes |
+|-------|------|-------|
+| `source_record` | ForeignKey → SourceRecord, nullable | Links to raw origin |
+| `batch` | ForeignKey → IngestionBatch | |
+| `organization` | ForeignKey → Organization | Denormalized for query performance |
+| `scope` | IntegerField | 1, 2, or 3 |
+| `category` | CharField | `diesel`, `grid_electricity`, `flight_short`, etc. |
+| `source_type` | CharField | Denormalized |
+| `activity_date` | DateField | |
+| `facility` | CharField | |
+| `description` | TextField | |
+| `quantity` | DecimalField(20,6) | Normalized to base unit |
+| `unit` | CharField | Normalized unit string |
+| `co2e` | DecimalField(20,6), nullable | Calculated CO₂ equivalent |
+| `co2e_unit` | CharField, default=`tonnes_CO2e` | |
+| `metadata` | JSONField | Extensible |
+| `raw_values` | JSONField | Snapshot of raw values for diff view |
+| `status` | CharField | `needs_review`, `approved`, `rejected`, `flagged`, `locked` |
+| `version` | IntegerField, default=1 | Bumped on every status change |
+| `reviewed_by` | CharField | Username |
+| `reviewed_at` | DateTimeField, nullable | |
+| `rejection_reason` | TextField | |
+
+**Source-of-truth tracking**: Each record has `source_record → SourceRecord → batch → source`, giving a complete provenance chain (`source → batch → source_record → normalized_record`). The `version` field increments on each status change, and `AuditLog` records every transition.
+
+**Scope categorization**: `scope` is assigned during normalization based on the emission category (Scope 1: direct fuel burn; Scope 2: purchased electricity; Scope 3: flights, hotels, rental cars).
 
 ### AuditLog
-Every action that changes state is logged: batch created, record approved, batch locked, etc. The `changes` JSON field captures what changed. This is the audit trail an external auditor would review.
 
-## Relationship Diagram
+| Field | Type | Notes |
+|-------|------|-------|
+| `organization` | ForeignKey → Organization | |
+| `action` | CharField | `batch_created`, `record_approved`, `record_flagged`, etc. |
+| `actor` | CharField | Username |
+| `record_type` | CharField | Model name |
+| `record_id` | IntegerField, nullable | |
+| `changes` | JSONField, default={} | `{old_status, new_status}` on status transitions |
+| `description` | TextField | Human-readable summary |
+| `created_at` | DateTimeField, auto | |
 
-```
-Organization
-  └─ DataSource (sap_fuel | utility_electricity | corporate_travel)
-       └─ IngestionBatch (one upload = one batch)
-            ├─ SourceRecord (raw, immutable)
-            └─ NormalizedRecord (derived, status-tracked, versioned)
-  └─ EmissionFactor (lookup)
-  └─ UnitConversion (lookup)
-  └─ AuditLog (all state changes)
-```
+Every user action (upload, approve, reject, flag, lock) creates an audit log entry. The `changes` field captures the before/after for status transitions.
 
-## Key Design Decisions in the Model
+### EmissionFactor
 
-**Why separate SourceRecord and NormalizedRecord instead of one table?**
-Two-table design preserves provenance. The SourceRecord is the receipt — it proves a row existed in the source file. The NormalizedRecord is the interpretation. If the normalization logic changes, old batches can be re-normalized from the source data without re-uploading.
+| Field | Type | Notes |
+|-------|------|-------|
+| `category` | CharField | Matches NormalizedRecord.category |
+| `scope` | IntegerField | |
+| `region` | CharField | `GLOBAL`, `US`, `EU`, `UK` |
+| `factor` | DecimalField(20,10) | tonnes CO₂e per unit |
+| `factor_unit` | CharField | e.g. `tonnes_CO2e_per_liter` |
+| `source` | CharField | e.g. `DEFRA 2024` |
+| `valid_from` / `valid_to` | DateField | Temporal validity |
 
-**Why denormalize raw_values onto NormalizedRecord?**
-The diff view needs to show "before" and "after" side by side. Rather than joining back to SourceRecord on every page load (which requires a JSON field extract), we snapshot the relevant raw fields onto the NormalizedRecord at creation time. This is a read-optimization for the analyst's primary workflow.
+Factors are queried by `(category, region, valid_date)` with a hardcoded dict fallback if the DB table is empty.
 
-**Why soft locks instead of hard locks?**
-Hard write-once locks require a migration to reverse. Soft locks (a status flag with audit logging) let an admin unlock with a traceable reason. In practice, auditors want to see who unlocked and why, not that unlocking is impossible.
+### UnitConversion
 
-**Why emission factors in the DB instead of code?**
-Emission factors change annually (DEFRA publishes new factors each year). Hardcoding them means a deploy for every factor update. Storing them with date ranges means we can retrospectively calculate CO2e using the factor that was valid at the activity date, which is the correct accounting practice.
+| Field | Type | Notes |
+|-------|------|-------|
+| `from_unit` | CharField | |
+| `to_unit` | CharField | |
+| `factor` | DecimalField(20,10) | |
+| `category` | CharField, blank | Optional restriction to emission category |
+
+Used during normalization to convert raw units (GAL → L, MWh → kWh, etc.) to the canonical unit for the emission factor lookup.
+
+---
+
+## Why This Model
+
+1. **Multi-tenancy**: Organization FK on every scoped model + UserProfile link → data never leaks between tenants.
+2. **Source-of-truth**: SourceRecord preserves the raw CSV row immutably; NormalizedRecord tracks provenance via `source_record`. Edits are logged, not overwritten.
+3. **Audit trail**: Every status transition is logged with before/after values.
+4. **Unit normalization**: UnitConversion table + fallback dict allows admin overrides without code changes.
+5. **Versioning**: `NormalizedRecord.version` on every status change enables "what changed and when" reporting.

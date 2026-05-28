@@ -1,115 +1,125 @@
-# Source Research
+# Source Formats
 
-## Source 1: SAP Fuel & Procurement Data
+## SAP Fuel & Procurement (`sap_fuel`)
 
-### Format Researched
-SAP transaction **MB5B (Stocks for Posting Date)** with ALV grid output exported to spreadsheet/CSV.
+### Real-world format researched
+We examined SAP MM (Materials Management) inventory movement exports. The
+actual SAP table is `MSEG` (material document segment), commonly exported via
+transaction `MB51` or `MB5B`. Key columns:
+- `MATNR` — material number
+- `WERKS` — plant
+- `MENGE` — quantity in base unit
+- `MEINS` — base unit of measure
+- `BUDAT` — posting date
+- `MAKTX` — material description
+- `MATL_GROUP` — material group
+- `BWART` — movement type
 
-### What I Learned
-SAP MM (Materials Management) tracks inventory movements through material documents. Transaction MB5B (report RM07MLBD) displays opening stock, receipts, issues, and closing stock for a given date range. The output can be saved as a spreadsheet from the SAP GUI. Key tables involved:
+### What we learned
+SAP dates use `DD.MM.YYYY` format (not ISO). Quantities can be in any unit
+the material master defines (L, KG, kWh, MWh, GAL, etc.). The same material
+number can have different unit conventions across plants.
 
-- **MSEG**: Material document segment — every inventory movement (receipt, issue, transfer) produces one row
-- **EKPO**: Purchasing document item — procurement details per purchase order line
-- **MARAM**: Material master general data
-- **T156S**: Movement type definitions
+A real export often includes 50+ columns. We chose a subset because the
+normalizer only needs: quantity → `MENGE`, unit → `MEINS`, date → `BUDAT`,
+description → `material_description`/`MAKTX`, facility → `Plant`/`WERKS`.
 
-Real-world complications:
-- Column headers can be German (Werk = Plant, Buch.datum = Posting Date, Menge = Quantity, MEINS = Base Unit of Measure)
-- Plant codes are internal SAP codes (DE01, US01) that mean nothing without a lookup table
-- Units are inconsistent (L for diesel, GAL for imported fuel, kWh for natural gas, KG for some materials)
-- Movement types determine whether a row is a receipt (101, 102) or an issue (261, 321)
-- Material groups categorize items (FUEL, RAW, HALB, FERT, etc.)
-- Dates use DD.MM.YYYY format by default in German-language configurations
+### Sample data design
+Our sample contains:
+- 6 materials (diesel, natural gas, gasoline, kerosene, steam, lubricant oil)
+- 3 plants (DE01, US01, FR01)
+- 5 years × 12 months of data
+- Edge cases: zero quantity, unknown plant (`UK01`, `NL01`, `CN01`), invalid
+  unit (`GAL`), non-numeric quantity (`abc`), invalid date, abnormally high
+  quantity (3,000,000 kWh steam), negative quantity
 
-### Sample Data Rationale
-The sample SAP CSV includes:
-- Diesel in liters (L) — the common unit for distillate fuel
-- Natural gas in kWh (direct energy purchase) and KG (mass-based, converted)
-- Gasoline in gallons (GAL) — US plants measure fuel in gallons, not liters
-- Kerosene in liters — jet fuel/industrial kerosene
-- Procurement items (steel brackets in STK, lubricant in KG) — non-fuel materials that still get spend-based Scope 3 emissions
-- A German-header row (Werk/Buch.datum) to test the normalizer's header detection
-- A zero-quantity row (movement reversal)
-- A non-numeric quantity row (data entry error)
-- An extremely large quantity (Steam — 3,000,000 kWh — to trigger the suspicion rule)
-- A row with an invalid date
+### What would break in production
+1. **SAP column names**: Real SAP exports use German column names (`MENGE`,
+   `BUDAT`) or English aliases depending on the user's SAP language setting.
+   We handle both but don't handle all possible aliases (e.g., `Menge` vs
+   `Quantity` vs `MENGE`).
+2. **Multi-line cells**: SAP descriptions occasionally contain newlines. The
+   CSV parser would fail or produce misaligned rows.
+3. **Encoding**: SAP exports can use Latin-1 instead of UTF-8. We assume
+   UTF-8 with BOM (`utf-8-sig`).
+4. **Unit of measure**: SAP allows arbitrary user-defined units. Unknown units
+   (`GAL`, `STK`, `T`) fall through to the normalizer's unit conversion table,
+   which must be kept up to date.
 
-### What Would Break in Real Deployment
-- **Plant code mapping**: Real plant codes must map to facility names and locations. Without a lookup table (e.g., via a Plant master data import), the facility field shows raw SAP codes.
-- **Movement type filtering**: Not all movement types should be included. A real deployment needs movement type allowlist configuration. Reversals (102, 262) can cause double-counting if not properly filtered.
-- **Material group to emission category mapping**: The normalizer uses keyword matching (mat_desc contains "DIESEL"). A real deployment needs a proper mapping table (e.g., material group 0001 → diesel).
-- **Multi-currency values**: The MB5B shows stock values in local currency. Multi-company-code SAP instances have different currencies.
-- **Volume corrections**: Fuel volume changes with temperature. SAP's Oil & Gas module (IS-OIL) handles temperature-corrected volumes. Our prototype assumes standard temperature.
+---
 
-## Source 2: Utility Electricity Data
+## Utility Electricity (`utility_electricity`)
 
-### Format Researched
-**Green Button Download My Data** CSV format, as implemented by PECO (PA), SCE (CA), BGE (MD), and the ESB Networks (Ireland) HDF format.
+### Real-world format researched
+We examined utility portal exports from providers like E.ON, Enel, and
+Schneider Electric's Resource Advisor. The data varies wildly by provider but
+commonly includes: meter ID, start/end date, usage (kWh or MWh), demand (kW),
+and cost.
 
-### What I Learned
-Green Button is a US-standard utility data export format, established by the Obama administration's "Green Button" initiative. It's supported by most major US utilities. Key research findings:
+### What we learned
+Utility data is the most inconsistent format across the three sources. Meter
+IDs can be alphanumeric, dates can be US or European format, and the usage
+column may have different names (`USAGE`, `Consumption`, `kWh`, `Usage (kWh)`).
+Some providers send cumulative readings (reset monthly), others send
+interval data (hourly or 15-minute).
 
-- PECO (Pennsylvania): Exports hourly interval data CSV with columns TYPE, DATE, START TIME, END TIME, USAGE (kWh), NOTES. Estimated reads flagged with asterisk.
-- SCE (Southern California Edison): Exports pipe-delimited CSVs with 15-min interval data, daily billing data, and monthly summaries. Columns include Mtr_Id, Rdng_Value (watts), BillPer_Strt_Dt, BillPer_End_Dt, Mnthly_Cnsum.
-- BGE (Baltimore Gas & Electric): Supports CSV and XML exports for monthly usage, 15-min interval, and hourly interval data.
-- ESB Networks (Ireland): Smart meter HDF format — 30-min readings in calculated kWh, with MPRN, Meter Serial Number, Read Value, Read Type (Active Import/Export), Read Date and End Time.
-- Oracle Utility Opower: Enterprise Green Button implementation with columns TYPE, START DATE, END DATE, USAGE, UNITS, COST, NOTES.
+### Sample data design
+Our sample contains:
+- 5 meters with varying usage patterns
+- 5 years × 12 months of data
+- Edge cases: missing usage (empty string), abnormally high usage
+  (2,500,000 kWh), wrong unit (`MWh` instead of `kWh`), estimated readings
+  flagged in notes
 
-Common columns across all: Meter ID / Usage Point ID, date range (start/end), energy usage, units (always kWh in Green Button), cost, and an estimated-read flag.
+### What would break in production
+1. **Multi-provider formats**: Each utility has a different CSV layout. A
+   single `utility_electricity` source type can't handle all formats without a
+   column-mapping configuration UI.
+2. **Interval data**: Hourly data would generate unreviewable row counts
+   (8,760 rows per meter per year). The current ingest flow doesn't batch
+   interval data into monthly aggregates.
+3. **Demand charges**: We only parse usage (kWh). Real electricity bills
+   include demand (kW), power factor, and tariff components that affect
+   emission calculations differently.
 
-### Sample Data Rationale
-The sample utility CSV includes:
-- Monthly billing periods (not calendar months — e.g., Jan 1-31, Feb 1-28) reflecting real billing cycles
-- Two meters (MTR-001 with typical 40-65 MWh/month for a mid-size facility, MTR-002 with 115-135 MWh/month for a larger facility)
-- A small meter (MTR-003 at 8.5 MWh/month — small office)
-- An estimated reading flagged in the NOTES column
-- A row with missing usage (data gap)
-- A row with MWh units instead of kWh (unit mismatch)
+---
 
-### What Would Break in Real Deployment
-- **Interval data**: Real utilities offer 15-min or hourly interval data, which has different structure than monthly billing data. Our normalizer handles only monthly billing periods.
-- **Time-of-use tariffs**: Many commercial tariffs have peak/off-peak splits. Green Button can include TOU rates, but our model doesn't track tariff-specific consumption.
-- **Multiple fuels**: Gas and electric come in the same export format. Our normalizer assumes electricity.
-- **Meter count**: Large facilities have dozens of meters. The dashboard needs aggregation by facility.
-- **Solar export**: Customers with solar panels have negative readings (net metering). Our normalizer treats all usage as positive.
+## Corporate Travel (`corporate_travel`)
 
-## Source 3: Corporate Travel Data
+### Real-world format researched
+We examined SAP Concur, Chrome River, and Expensify exports. Common columns:
+employee name, expense type, transaction date, amount, currency, and
+type-specific fields (origin/destination for flights, check-in/out for hotels).
 
-### Format Researched
-**SAP Concur Expense Extract** (v4 API and CSV extract) and **Navan/TripActions** expense API.
+### What we learned
+Travel data is the richest but most variable source. A single expense report
+can contain flights, hotels, car rentals, meals, and miscellaneous fees — each
+with different emission factors. Corporate card feeds often merge multiple
+transactions into one line, making it hard to isolate individual emissions.
 
-### What I Learned
-SAP Concur dominates the corporate T&E market. The expense data model:
+Flight emission calculations are especially complex because they depend on
+aircraft type, seat class, load factor, and radiative forcing. We use distance
+bands (<500 km, 500–1500 km, >1500 km) as a proxy, which is a common
+simplification.
 
-- **Report**: Top-level container for a trip or expense submission. Has approval status, payment status, total.
-- **Expense Entry**: Individual expense line item. Fields include ExpenseType (AIRFR=airfare, HOTEL=hotel, CAR=car rental, BUSML= mileage, MEALS=meals), TransactionAmount, TransactionDate, CurrencyCode, LocationName, LocationCountry, VendorDescription.
-- **Itemization**: Optional breakdown of a single expense (e.g., individual days in a hotel stay).
-- **Journey**: Mileage-specific data with distance and route.
+### Sample data design
+Our sample contains:
+- 5 employees with flight, hotel, car rental, rail, bus, and meal expenses
+- 8 flight routes (short to long haul)
+- Edge cases: hotel stays with varying lengths, different currencies (USD,
+  EUR, GBP), car rental without distance (`Quantity: 1` means per-rental, not
+  per-km)
 
-Navan (TripActions) has a similar structure with the Navan Expense API. Key fields: amount, category, merchant, transaction date, employee, custom fields (project codes, cost centers).
-
-Real-world data issues:
-- Expense types are platform-specific codes that need mapping to emission categories
-- Airfare expenses don't always include origin/destination — sometimes just the total cost
-- Hotel expenses don't always include number of nights
-- Currency varies (some reports mix USD and local currency without conversion)
-- Distances aren't given — you infer from airport codes or use spend-based estimation
-- Itemization is optional, so a "flight" expense might include taxes and fees without separate breakdown
-
-### Sample Data Rationale
-The sample travel CSV includes:
-- Flights with airport codes (JFK, LHR, SFO, ORD, LAX, NRT) enabling distance lookup from the known pairs table
-- Hotel stays with check-in/check-out dates → nights count (3 nights in London, 5 in Tokyo)
-- Car rentals with days count → estimated km/day
-- Rail with explicit distance (TGV Paris-Lyon, 465km)
-- Bus with distance (Tokyo-Yokohama, 30km)
-- A meals expense (no travel category → spend-based estimation)
-- Unknown airport pairs (SFO-ORD not in lookup table → estimated 1000km with warning)
-
-### What Would Break in Real Deployment
-- **Airport code coverage**: Only 8 airport pairs are in the lookup table. Real deployment needs a comprehensive airport distance database (e.g., OpenFlights airport data).
-- **Route inference**: A flight JFK→LHR is straightforward. Multi-segment itineraries (JFK→LHR→FRA) require parsing connection logic.
-- **Hotel night counting**: The prototype reads "Nights" as a column. Real Concur data needs either itemization (per-night costs) or explicit night counts from travel booking data.
-- **Currency conversion**: All sample data uses USD. Real data mixes currencies (GBP for UK hotels, EUR for European rail). CO2e calculations don't need currency, but spend-based estimates do.
-- **Employee anonymization**: The prototype uses employee names. Real deployment would anonymize PII or use employee IDs.
-- **Car rental actual distance**: The prototype defaults to 50km/day. Real car rental emissions depend on actual distance driven, vehicle class, and fuel type — none of which are in standard Concur extracts.
+### What would break in production
+1. **Policy compliance**: Real travel systems include policy violations
+   (out-of-policy bookings, missing receipts). Our system ignores policy data.
+2. **Multi-currency conversion**: We treat `Amount` as the billed amount in
+   the transaction currency but don't convert to a base currency for
+   normalization. Emission factors assume the amount is in the factor's
+   currency region.
+3. **Hotel emission factors**: Hotel emissions depend on location, not just
+   nightly rate. We use an average per-night factor, but a real system would
+   look up the hotel's country or region.
+4. **Car rental distance**: Most corporate card feeds don't include distance
+   driven. We currently skip car rental emissions when `Quantity` is 1
+   (per-rental) rather than a distance.

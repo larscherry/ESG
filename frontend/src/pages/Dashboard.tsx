@@ -74,10 +74,6 @@ export default function Dashboard() {
   const totalFailed = batches.reduce((s, b) => s + b.failed_count, 0)
   const totalSuspicious = batches.reduce((s, b) => s + b.suspicious_count, 0)
   const totalPassed = batches.reduce((s, b) => s + b.passed_count, 0)
-  const pendingReview = batches.filter((b) => b.status === 'staged').length
-  const approved = batches.filter((b) => b.status === 'approved').length
-  const locked = batches.filter((b) => b.status === 'locked').length
-
   const totalCo2e = Number(analytics?.total?.total_co2e || 0)
   const scopeMap = useMemo(() => {
     const m: Record<number, number> = { 1: 0, 2: 0, 3: 0 }
@@ -95,6 +91,10 @@ export default function Dashboard() {
       count: m.count || 0,
     }))
   }, [analytics])
+
+  const pendingReview = batches.filter((b) => b.status === 'staged').length
+  const approved = batches.filter((b) => b.status === 'approved').length
+  const locked = batches.filter((b) => b.status === 'locked').length
 
   const passRate = totalRecords > 0 ? Math.round((totalPassed / totalRecords) * 100) : 0
   const failRate = totalRecords > 0 ? Math.round((totalFailed / totalRecords) * 100) : 0

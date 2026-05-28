@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import path, include, re_path
 from django.views.generic import TemplateView
 from django.conf import settings
@@ -26,7 +27,12 @@ router.register(r'unit-conversions', UnitConversionViewSet)
 router.register(r'analytics', AnalyticsViewSet, basename='analytics')
 router.register(r'upload', UploadViewSet, basename='upload')
 
+def health(request):
+    return JsonResponse({'status': 'ok'})
+
+
 urlpatterns = [
+    path('health/', health),
     path('admin/', admin.site.urls),
     path('api/auth/csrf', csrf_token, name='auth-csrf'),
     path('api/auth/login', login, name='auth-login'),

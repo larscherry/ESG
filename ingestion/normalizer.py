@@ -83,7 +83,6 @@ UNIT_NORMALIZATION_MAP = {
     'metric ton': ('tonnes', Decimal('1')),
     'mt': ('tonnes', Decimal('1')),
     'kwh': ('kWh', Decimal('1')),
-    'kwh ': ('kWh', Decimal('1')),
     'mwh': ('kWh', Decimal('1000')),
     'mj': ('kWh', Decimal('0.277778')),
     'therm': ('kWh', Decimal('29.3071')),
@@ -107,7 +106,7 @@ def normalize_unit(raw: str):
     return Decimal('1'), raw, [f'unknown_unit: {raw}']
 
 
-EMISSION_FACTORS = {
+_FALLBACK_EMISSION_FACTORS = {
     'diesel': {'scope': 1, 'factor': Decimal('0.00268'), 'unit': 'tonnes_CO2e_per_liter', 'source': 'DEFRA 2024'},
     'gasoline': {'scope': 1, 'factor': Decimal('0.00231'), 'unit': 'tonnes_CO2e_per_liter', 'source': 'DEFRA 2024'},
     'natural_gas': {'scope': 1, 'factor': Decimal('0.000184'), 'unit': 'tonnes_CO2e_per_kWh', 'source': 'DEFRA 2024'},
@@ -120,6 +119,18 @@ EMISSION_FACTORS = {
     'hotel': {'scope': 3, 'factor': Decimal('0.015'), 'unit': 'tonnes_CO2e_per_night', 'source': 'DEFRA 2024'},
     'car_rental': {'scope': 3, 'factor': Decimal('0.0002'), 'unit': 'tonnes_CO2e_per_km', 'source': 'DEFRA 2024'},
 }
+
+
+def get_emission_factor(category):
+    ef = EmissionFactor.objects.filter(category=category).first()
+    if ef:
+        return {
+            'scope': ef.scope,
+            'factor': ef.factor,
+            'unit': ef.factor_unit,
+            'source': ef.source,
+        }
+    return _FALLBACK_EMISSION_FACTORS.get(category)
 
 AIRPORT_DISTANCES_KM = {
     ('JFK', 'LHR'): 5550,
@@ -242,7 +253,7 @@ def normalize_fuel_item(raw_record, raw_desc_upper):
     else:
         category = 'diesel'
 
-    ef = EMISSION_FACTORS.get(category)
+    ef = get_emission_factor(category)
     if not ef:
         return None, ['unknown_fuel_category']
 
@@ -463,7 +474,8 @@ def normalize_corporate_travel(raw_record):
             norm_qty = qty * Decimal('1000')
             warnings.append('estimated_flight_distance')
         amount_res = Decimal(amount_raw) if amount_raw.replace('.', '', 1).isdigit() else Decimal('0')
-        co2e = (norm_qty * EMISSION_FACTORS[category]['factor']).quantize(Decimal('0.000001'))
+        ef = get_emission_factor(category) or _FALLBACK_EMISSION_FACTORS.get(category, {'factor': Decimal('0.0001')})
+        co2e = (norm_qty * ef['factor']).quantize(Decimal('0.000001'))
         facility = f"{origin}-{dest}"
 
     elif exp_type in ('HOTEL', 'LODGING'):
@@ -472,7 +484,8 @@ def normalize_corporate_travel(raw_record):
         norm_unit = 'nights'
         nights = parse_quantity(str(row.get('Nights', row.get('nights', '1'))))
         norm_qty = nights[0] if nights[0] else Decimal('1')
-        co2e = (norm_qty * EMISSION_FACTORS['hotel']['factor']).quantize(Decimal('0.000001'))
+        ef = get_emission_factor('hotel') or _FALLBACK_EMISSION_FACTORS.get('hotel', {'factor': Decimal('0.015')})
+        co2e = (norm_qty * ef['factor']).quantize(Decimal('0.000001'))
         facility = str(row.get('HotelName', row.get('hotel_name', '')))
 
     elif exp_type in ('CAR', 'CAR_RENTAL', 'RENTAL'):
@@ -483,7 +496,8 @@ def normalize_corporate_travel(raw_record):
         days_qty = days[0] if days[0] else Decimal('1')
         norm_qty = days_qty * Decimal('50')
         warnings.append('estimated_car_distance: 50km/day default')
-        co2e = (norm_qty * EMISSION_FACTORS['car_rental']['factor']).quantize(Decimal('0.000001'))
+        ef = get_emission_factor('car_rental') or _FALLBACK_EMISSION_FACTORS.get('car_rental', {'factor': Decimal('0.0002')})
+        co2e = (norm_qty * ef['factor']).quantize(Decimal('0.000001'))
         facility = str(row.get('Location', row.get('location', '')))
 
     elif exp_type in ('BUS', 'RAIL', 'TRAIN'):

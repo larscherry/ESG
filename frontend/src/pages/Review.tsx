@@ -116,7 +116,7 @@ export default function Review() {
     if (selected.size === 0) return
     setConfirmAction(null)
     try {
-      await api.bulkAction(action, Array.from(selected), 'analyst', action === 'reject' ? 'Rejected by analyst' : '')
+      await api.bulkAction(action, Array.from(selected), action === 'reject' ? 'Rejected by analyst' : '')
       setActionMsg(`${action} applied to ${selected.size} records`)
       setSelected(new Set())
       await refreshRecords()

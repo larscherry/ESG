@@ -23,8 +23,7 @@ echo "Node: $(node -v)  npm: $(npm -v)"
 
 echo "=== Building frontend ==="
 cd frontend
-rm -rf node_modules package-lock.json
-npm install
+npm ci
 npm run build
 cd ..
 
@@ -33,6 +32,7 @@ python manage.py collectstatic --noinput --clear
 
 echo "=== Running migrations ==="
 python manage.py migrate --run-syncdb
+python manage.py migrate authtoken
 
 echo "=== Seeding sample data ==="
 python manage.py seed_sample_data

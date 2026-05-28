@@ -5,7 +5,7 @@ import re
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 
-from django.db import transaction
+from django.db import models, transaction
 from django.db.models import Sum, Count
 from django.db.models.functions import TruncMonth, ExtractYear, ExtractMonth
 from rest_framework import viewsets, status
@@ -27,12 +27,12 @@ from .serializers import (
 from .normalizer import normalize_batch
 
 
-class OrganizationViewSet(viewsets.ModelViewSet):
+class OrganizationViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Organization.objects.all()
     serializer_class = OrganizationSerializer
 
 
-class DataSourceViewSet(viewsets.ModelViewSet):
+class DataSourceViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = DataSource.objects.all()
     serializer_class = DataSourceSerializer
 
@@ -44,7 +44,7 @@ class DataSourceViewSet(viewsets.ModelViewSet):
         return qs
 
 
-class IngestionBatchViewSet(viewsets.ModelViewSet):
+class IngestionBatchViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = IngestionBatch.objects.all()
     serializer_class = IngestionBatchSerializer
 
@@ -61,12 +61,12 @@ class IngestionBatchViewSet(viewsets.ModelViewSet):
         batch.status = 'approved'
         batch.save()
         NormalizedRecord.objects.filter(batch=batch, status='needs_review').update(
-            status='approved', reviewed_by='batch_approve', reviewed_at=datetime.now()
+            status='approved', reviewed_by=request.user.username, reviewed_at=datetime.now()
         )
         AuditLog.objects.create(
             organization=batch.source.organization,
             action='batch_approved',
-            actor=request.data.get('actor', 'system'),
+            actor=request.user.username,
             record_type='IngestionBatch',
             record_id=batch.id,
             description=f"Batch {batch.id} approved",
@@ -84,7 +84,7 @@ class IngestionBatchViewSet(viewsets.ModelViewSet):
         AuditLog.objects.create(
             organization=batch.source.organization,
             action='batch_locked',
-            actor=request.data.get('actor', 'system'),
+            actor=request.user.username,
             record_type='IngestionBatch',
             record_id=batch.id,
             description=f"Batch {batch.id} locked for audit",
@@ -92,7 +92,7 @@ class IngestionBatchViewSet(viewsets.ModelViewSet):
         return Response({'status': 'locked'})
 
 
-class SourceRecordViewSet(viewsets.ModelViewSet):
+class SourceRecordViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = SourceRecord.objects.all()
     serializer_class = SourceRecordSerializer
 
@@ -104,7 +104,7 @@ class SourceRecordViewSet(viewsets.ModelViewSet):
         return qs
 
 
-class NormalizedRecordViewSet(viewsets.ModelViewSet):
+class NormalizedRecordViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = NormalizedRecord.objects.all()
     serializer_class = NormalizedRecordSerializer
 
@@ -132,7 +132,6 @@ class NormalizedRecordViewSet(viewsets.ModelViewSet):
 
         action = serializer.validated_data['action']
         record_ids = serializer.validated_data['record_ids']
-        actor = serializer.validated_data.get('reviewed_by', 'analyst')
         reason = serializer.validated_data.get('rejection_reason', '')
 
         status_map = {
@@ -154,24 +153,28 @@ class NormalizedRecordViewSet(viewsets.ModelViewSet):
         now = datetime.now()
         update_fields = {
             'status': status_map[action],
-            'reviewed_by': actor,
+            'reviewed_by': request.user.username,
             'reviewed_at': now,
         }
         if action == 'reject':
             update_fields['rejection_reason'] = reason
 
         records.update(**update_fields)
+        records.update(version=models.F('version') + 1)
 
         if org:
-            for rid in record_ids:
-                AuditLog.objects.create(
+            audit_logs = [
+                AuditLog(
                     organization=org,
                     action=action_map[action],
-                    actor=actor,
+                    actor=request.user.username,
                     record_type='NormalizedRecord',
                     record_id=rid,
                     description=reason if action == 'reject' else '',
                 )
+                for rid in record_ids
+            ]
+            AuditLog.objects.bulk_create(audit_logs)
 
         return Response({'status': 'ok', 'action': action, 'count': len(record_ids)})
 
@@ -208,6 +211,9 @@ class UnitConversionViewSet(viewsets.ReadOnlyModelViewSet):
 class AnalyticsViewSet(viewsets.ViewSet):
     def list(self, request):
         records = NormalizedRecord.objects.all()
+        org_id = request.query_params.get('organization')
+        if org_id:
+            records = records.filter(organization_id=org_id)
         source_type = request.query_params.get('source_type')
         scope = request.query_params.get('scope')
         year = request.query_params.get('year')
@@ -271,6 +277,9 @@ class AnalyticsViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def dates(self, request):
         records = NormalizedRecord.objects.all()
+        org_id = request.query_params.get('organization')
+        if org_id:
+            records = records.filter(organization_id=org_id)
         years = list(records.annotate(
             year=ExtractYear('activity_date')
         ).values('year').annotate(count=Count('id')).order_by('year'))
@@ -283,6 +292,9 @@ class AnalyticsViewSet(viewsets.ViewSet):
         })
 
 
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
+
+
 class UploadViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'])
     def csv(self, request):
@@ -292,6 +304,12 @@ class UploadViewSet(viewsets.ViewSet):
 
         source = DataSource.objects.get(id=serializer.validated_data['source_id'])
         file = serializer.validated_data['file']
+
+        if file.size > MAX_UPLOAD_BYTES:
+            return Response(
+                {'error': f'File too large ({file.size / 1024 / 1024:.1f} MB). Maximum is {MAX_UPLOAD_BYTES / 1024 / 1024:.0f} MB.'},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
 
         try:
             decoded = file.read().decode('utf-8-sig')
@@ -303,17 +321,28 @@ class UploadViewSet(viewsets.ViewSet):
         if not rows:
             return Response({'error': 'CSV file is empty'}, status=status.HTTP_400_BAD_REQUEST)
 
+        expected_headers = {
+            'sap_fuel': {'Material', 'Menge', 'MEINS', 'BUDAT', 'material_description', 'Plant'},
+            'utility_electricity': {'Meter ID', 'TYPE', 'START DATE', 'END DATE', 'USAGE', 'UNITS'},
+            'corporate_travel': {'Employee', 'ExpenseType', 'TransactionDate', 'Amount', 'Currency'},
+        }
+        detected = set(reader.fieldnames or [])
+        expected = expected_headers.get(source.source_type, set())
+        if expected and not expected.intersection(detected):
+            return Response({
+                'error': f'CSV headers don\'t match expected format for {source.source_type}. '
+                         f'Expected at least one of: {", ".join(sorted(expected))}. '
+                         f'Got: {", ".join(sorted(detected)) or "none"}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         with transaction.atomic():
             batch = IngestionBatch.objects.create(
                 source=source,
                 status='importing',
                 total_records=len(rows),
-                uploaded_by=request.data.get('uploaded_by', ''),
+                uploaded_by=request.user.username,
             )
 
-            failed = 0
-            suspicious = 0
-            passed = 0
             source_records = []
 
             for i, row in enumerate(rows):
@@ -351,7 +380,7 @@ class UploadViewSet(viewsets.ViewSet):
         AuditLog.objects.create(
             organization=source.organization,
             action='batch_created',
-            actor=request.data.get('uploaded_by', 'system'),
+            actor=request.user.username,
             record_type='IngestionBatch',
             record_id=batch.id,
             description=f"Ingested {len(rows)} rows from {source.name}",

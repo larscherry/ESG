@@ -1,7 +1,7 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useState, useRef } from 'react'
-import { api } from './lib/api'
-import type { DataSource, IngestionBatch, AuditLog } from './lib/api'
+import { api, setToken, isAuthenticated } from './lib/api'
+import type { DataSource, IngestionBatch, AuditLog, AuthUser } from './lib/api'
 import {
   LayoutGrid,
   FileUp,
@@ -52,6 +52,7 @@ const ESG_TABS = ['Environment', 'Social', 'Governance']
 export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
+  const [user, setUser] = useState<AuthUser | null>(null)
   const [esgTab, setEsgTab] = useState('Environment')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [sourceFilter, setSourceFilter] = useState<number | null>(null)
@@ -67,6 +68,8 @@ export default function Layout() {
   const profileDropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    if (!isAuthenticated()) return
+    api.getMe().then(setUser).catch(() => {})
     api.getSources().then((s) => setSources(s.results)).catch(() => {})
     api.getBatches().then((b) => setBatches(b.results)).catch(() => {})
     api.getAuditLogs().then((l) => setRecentLogs(l.results.slice(0, 5))).catch(() => {})
@@ -149,7 +152,7 @@ export default function Layout() {
         </div>
         <div className="flex-1" />
         <button
-          onClick={() => { navigate('/'); setCategoryFilter(''); setSourceFilter(null) }}
+          onClick={() => { setToken(null); navigate('/login') }}
           className="h-10 w-10 rounded-md flex items-center justify-center text-[#e94e1b] hover:bg-[#e94e1b]/10 transition-colors"
           title="Logout"
         >
@@ -257,18 +260,20 @@ export default function Layout() {
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
                 className={`flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors ${profileDropdownOpen ? 'bg-gray-100' : 'hover:bg-gray-50'}`}
               >
-                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#1ea97c] to-[#14b8a6] flex items-center justify-center text-white font-bold text-sm shadow-sm">A</div>
+                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#1ea97c] to-[#14b8a6] flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                  {(user?.username || '?')[0].toUpperCase()}
+                </div>
                 <div className="text-left hidden sm:block">
-                  <p className="text-sm font-semibold text-[#1a1a1a]">Alex Analyst</p>
-                  <p className="text-[11px] text-[#9ca3af] font-medium">alex@breathe-esg.com</p>
+                  <p className="text-sm font-semibold text-[#1a1a1a]">{user?.username || 'User'}</p>
+                  <p className="text-[11px] text-[#9ca3af] font-medium">{user?.email || ''}</p>
                 </div>
                 <ChevronDown className="h-4 w-4 text-[#9ca3af]" />
               </button>
               {profileDropdownOpen && (
                 <div className="absolute top-full mt-2 right-0 w-56 bg-white rounded-xl border border-[#d1d5db] shadow-lg z-50 py-2">
                   <div className="px-4 py-3 border-b border-[#eef0f2]">
-                    <p className="text-sm font-bold text-[#1a1a1a]">Alex Analyst</p>
-                    <p className="text-xs text-[#9ca3af]">alex@breathe-esg.com</p>
+                    <p className="text-sm font-bold text-[#1a1a1a]">{user?.username || 'User'}</p>
+                    <p className="text-xs text-[#9ca3af]">{user?.email || ''}</p>
                   </div>
                   <button className="w-full text-left px-4 py-2.5 text-sm text-[#4b5563] hover:bg-[#f7f8fa] flex items-center gap-3 transition-colors">
                     <User className="h-4 w-4 text-[#9ca3af]" />
@@ -284,7 +289,7 @@ export default function Layout() {
                   </button>
                   <div className="border-t border-[#eef0f2] mt-1 pt-1">
                     <button
-                      onClick={() => { navigate('/'); setCategoryFilter(''); setSourceFilter(null) }}
+                      onClick={() => { setToken(null); navigate('/login') }}
                       className="w-full text-left px-4 py-2.5 text-sm text-[#e94e1b] hover:bg-red-50 flex items-center gap-3 transition-colors font-semibold"
                     >
                       <LogOut className="h-4 w-4" />

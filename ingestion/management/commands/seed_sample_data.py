@@ -3,8 +3,10 @@ import io
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from rest_framework.authtoken.models import Token
 
 from ingestion.models import (
     Organization, DataSource, IngestionBatch,
@@ -221,6 +223,7 @@ class Command(BaseCommand):
 
             self._seed_emission_factors()
             self._seed_unit_conversions()
+            self._seed_user(org)
 
             self.stdout.write(self.style.SUCCESS('Sample data seeded successfully'))
 
@@ -316,3 +319,14 @@ class Command(BaseCommand):
                 from_unit=c['from_unit'], to_unit=c['to_unit'],
                 defaults={'factor': c['factor'], 'category': c['category']}
             )
+
+    def _seed_user(self, org):
+        user, created = User.objects.get_or_create(
+            username='analyst',
+            defaults={'email': 'analyst@breathe-esg.com', 'is_staff': True},
+        )
+        if created:
+            user.set_password('breathe2024')
+            user.save()
+        token, _ = Token.objects.get_or_create(user=user)
+        self.stdout.write(f'  User: analyst / breathe2024  (token: {token.key})')

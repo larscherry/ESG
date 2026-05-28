@@ -12,6 +12,7 @@ from ingestion.views import (
     EmissionFactorViewSet, UnitConversionViewSet,
     AnalyticsViewSet, UploadViewSet,
 )
+from breatheesg.auth_views import login, me
 
 router = DefaultRouter(trailing_slash=False)
 router.register(r'organizations', OrganizationViewSet)
@@ -27,6 +28,8 @@ router.register(r'upload', UploadViewSet, basename='upload')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/auth/login', login, name='auth-login'),
+    path('api/auth/me', me, name='auth-me'),
     path('api/', include(router.urls)),
 ]
 

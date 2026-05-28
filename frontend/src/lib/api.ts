@@ -1,13 +1,36 @@
 const BASE = '/api'
 
+function getToken(): string | null {
+  return localStorage.getItem('auth_token')
+}
+
+export function setToken(token: string | null) {
+  if (token) localStorage.setItem('auth_token', token)
+  else localStorage.removeItem('auth_token')
+}
+
+export function isAuthenticated(): boolean {
+  return !!getToken()
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  })
+  const headers: Record<string, string> = {}
+  const token = getToken()
+  if (token) headers['Authorization'] = `Token ${token}`
+
+  const isFormData = options?.body instanceof FormData
+  if (!isFormData) headers['Content-Type'] = 'application/json'
+
+  const res = await fetch(`${BASE}${url}`, { headers, ...options })
   if (!res.ok) {
-    const err = await res.text()
-    throw new Error(err || res.statusText)
+    let message = res.statusText
+    try {
+      const body = await res.json()
+      message = body.error || body.detail || JSON.stringify(body)
+    } catch {
+      message = await res.text().catch(() => res.statusText)
+    }
+    throw new Error(message)
   }
   return res.json()
 }
@@ -77,7 +100,17 @@ export interface UploadResult {
   suspicious: number
 }
 
+export interface AuthUser {
+  id: number; username: string; email: string; is_staff: boolean
+}
+
 export const api = {
+  login: (username: string, password: string) =>
+    request<{ token: string; user: AuthUser }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+  getMe: () => request<AuthUser>('/auth/me'),
   getOrganizations: () => request<PaginatedResponse<Organization>>('/organizations'),
   getSources: (orgId?: number) =>
     request<PaginatedResponse<DataSource>>(`/sources${orgId ? `?organization=${orgId}` : ''}`),
@@ -102,19 +135,26 @@ export const api = {
     return request<AnalyticsData>(`/analytics?${q}`)
   },
   getAnalyticsDates: () => request<AnalyticsDates>('/analytics/dates'),
-  uploadCSV: async (sourceId: number, file: File, uploadedBy?: string) => {
+  uploadCSV: async (sourceId: number, file: File) => {
     const form = new FormData()
     form.append('source_id', String(sourceId))
     form.append('file', file)
-    if (uploadedBy) form.append('uploaded_by', uploadedBy)
-    const res = await fetch(`${BASE}/upload/csv`, { method: 'POST', body: form })
-    if (!res.ok) throw new Error(await res.text())
+    const token = getToken()
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Token ${token}`
+    const res = await fetch(`${BASE}/upload/csv`, { method: 'POST', body: form, headers })
+    if (!res.ok) {
+      let message = res.statusText
+      try { const body = await res.json(); message = body.error || body.detail || JSON.stringify(body) }
+      catch { message = await res.text().catch(() => res.statusText) }
+      throw new Error(message)
+    }
     return res.json() as Promise<UploadResult>
   },
-  bulkAction: (action: string, recordIds: number[], reviewedBy = 'analyst', reason = '') =>
+  bulkAction: (action: string, recordIds: number[], reason = '') =>
     request('/records/bulk_action', {
       method: 'POST',
-      body: JSON.stringify({ action, record_ids: recordIds, reviewed_by: reviewedBy, rejection_reason: reason }),
+      body: JSON.stringify({ action, record_ids: recordIds, rejection_reason: reason }),
     }),
   approveBatch: (batchId: number) =>
     request(`/batches/${batchId}/approve`, { method: 'POST' }),

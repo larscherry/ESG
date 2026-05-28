@@ -37,13 +37,15 @@ class NormalizedRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = NormalizedRecord
         fields = '__all__'
-        read_only_fields = ['created_at', 'updated_at', 'version']
+        read_only_fields = [
+            'created_at', 'updated_at', 'version', 'status',
+            'reviewed_by', 'reviewed_at', 'rejection_reason',
+        ]
 
 
 class NormalizedRecordActionSerializer(serializers.Serializer):
     action = serializers.ChoiceField(choices=['approve', 'reject', 'flag', 'lock'])
     record_ids = serializers.ListField(child=serializers.IntegerField())
-    reviewed_by = serializers.CharField(max_length=255, default='analyst')
     rejection_reason = serializers.CharField(required=False, allow_blank=True)
 
 

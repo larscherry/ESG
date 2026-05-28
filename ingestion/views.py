@@ -206,7 +206,7 @@ class UnitConversionViewSet(viewsets.ReadOnlyModelViewSet):
 class AnalyticsViewSet(viewsets.ViewSet):
     def list(self, request):
         from django.db.models import Sum, Count
-        from django.db.models.functions import ExtractYear, ExtractMonth
+        from django.db.models.functions import TruncMonth, ExtractYear
         records = NormalizedRecord.objects.all()
         source_type = request.query_params.get('source_type')
         scope = request.query_params.get('scope')
@@ -229,14 +229,14 @@ class AnalyticsViewSet(viewsets.ViewSet):
             total_co2e=Sum('co2e'), count=Count('id')
         ).order_by('-total_co2e'))
 
-        monthly = list(records.extra(
-            select={'month': "SUBSTR(activity_date, 1, 7)"}
+        monthly = list(records.annotate(
+            month=TruncMonth('activity_date')
         ).values('month').annotate(
             total_co2e=Sum('co2e'), total_qty=Sum('quantity'), count=Count('id')
         ).order_by('month'))
 
-        yearly = list(records.extra(
-            select={'year': "SUBSTR(activity_date, 1, 4)"}
+        yearly = list(records.annotate(
+            year=ExtractYear('activity_date')
         ).values('year').annotate(
             total_co2e=Sum('co2e'), total_qty=Sum('quantity'), count=Count('id')
         ).order_by('year'))
@@ -256,7 +256,12 @@ class AnalyticsViewSet(viewsets.ViewSet):
         return Response({
             'by_scope': [{**s, 'total_co2e': float(s['total_co2e'] or 0)} for s in by_scope],
             'by_category': [{**c, 'total_co2e': float(c['total_co2e'] or 0)} for c in by_category],
-            'monthly': [{**m, 'total_co2e': float(m['total_co2e'] or 0), 'total_qty': float(m['total_qty'] or 0)} for m in monthly],
+            'monthly': [{
+                **m,
+                'month': m['month'].strftime('%Y-%m') if m['month'] else None,
+                'total_co2e': float(m['total_co2e'] or 0),
+                'total_qty': float(m['total_qty'] or 0),
+            } for m in monthly],
             'yearly': [{**y, 'total_co2e': float(y['total_co2e'] or 0), 'total_qty': float(y['total_qty'] or 0)} for y in yearly],
             'by_source': [{**s, 'total_co2e': float(s['total_co2e'] or 0), 'total_qty': float(s['total_qty'] or 0)} for s in by_source],
             'by_status': by_status,
@@ -266,16 +271,17 @@ class AnalyticsViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def dates(self, request):
         from django.db.models import Count
+        from django.db.models.functions import ExtractYear, ExtractMonth
         records = NormalizedRecord.objects.all()
-        years = list(records.extra(
-            select={'year': "SUBSTR(activity_date, 1, 4)"}
+        years = list(records.annotate(
+            year=ExtractYear('activity_date')
         ).values('year').annotate(count=Count('id')).order_by('year'))
-        months = list(records.extra(
-            select={'month': "CAST(SUBSTR(activity_date, 6, 2) AS INTEGER)"}
+        months = list(records.annotate(
+            month=ExtractMonth('activity_date')
         ).values('month').distinct().order_by('month'))
         return Response({
-            'years': [int(y['year']) for y in years],
-            'months': [int(m['month']) for m in months],
+            'years': [y['year'] for y in years],
+            'months': [m['month'] for m in months],
         })
 
 

@@ -31,6 +31,6 @@ services:
       - key: WEB_CONCURRENCY
         value: "4"
       - key: NODE_VERSION
-        value: "20.18.0"
+        value: "22.14.0"
     healthCheckPath: /api/analytics
     autoDeploy: true

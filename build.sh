@@ -10,7 +10,7 @@ if [ -s "$NVM_DIR/nvm.sh" ]; then
   nvm use "${NODE_VERSION:-20}" > /dev/null
 else
   # Fallback: download Node directly
-  curl -fsSL https://nodejs.org/dist/v${NODE_VERSION:-20.18.0}/node-v${NODE_VERSION:-20.18.0}-linux-x64.tar.xz -o /tmp/node.tar.xz
+  curl -fsSL https://nodejs.org/dist/v${NODE_VERSION:-22.14.0}/node-v${NODE_VERSION:-22.14.0}-linux-x64.tar.xz -o /tmp/node.tar.xz
   mkdir -p /tmp/node
   tar -xf /tmp/node.tar.xz -C /tmp/node --strip-components=1
   export PATH="/tmp/node/bin:$PATH"
@@ -20,7 +20,7 @@ echo "Node: $(node -v)  npm: $(npm -v)"
 
 echo "=== Building frontend ==="
 cd frontend
-npm ci --omit=optional
+npm ci
 npm run build
 cd ..
 

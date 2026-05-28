@@ -1,5 +1,7 @@
 django>=6.0
 djangorestframework>=3.17
 django-cors-headers>=4.9
+dj-database-url>=2.0
+psycopg2-binary>=2.9
 gunicorn>=26.0
 whitenoise>=6.12

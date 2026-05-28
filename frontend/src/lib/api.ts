@@ -54,6 +54,29 @@ export interface PaginatedResponse<T> {
   count: number; next: string | null; previous: string | null; results: T[]
 }
 
+export interface AnalyticsData {
+  by_scope: { scope: number; total_co2e: number; count: number }[]
+  by_category: { category: string; total_co2e: number; count: number }[]
+  monthly: { month: string; total_co2e: number; total_qty: number; count: number }[]
+  yearly: { year: number; total_co2e: number; total_qty: number; count: number }[]
+  by_source: { source_type: string; total_co2e: number; total_qty: number; count: number }[]
+  by_status: { status: string; count: number }[]
+  total: { total_co2e: number | null; total_qty: number | null; total_count: number }
+}
+
+export interface AnalyticsDates {
+  years: number[]
+  months: number[]
+}
+
+export interface UploadResult {
+  batch_id: number
+  total: number
+  passed: number
+  failed: number
+  suspicious: number
+}
+
 export const api = {
   getOrganizations: () => request<PaginatedResponse<Organization>>('/organizations'),
   getSources: (orgId?: number) =>
@@ -72,6 +95,13 @@ export const api = {
     request<PaginatedResponse<SourceRecord>>(`/source-records?batch=${batchId}`),
   getAuditLogs: (orgId?: number) =>
     request<PaginatedResponse<AuditLog>>(`/audit-logs${orgId ? `?organization=${orgId}` : ''}`),
+  getAnalytics: (params?: { year?: string; month?: string }) => {
+    const q = new URLSearchParams()
+    if (params?.year) q.set('year', params.year)
+    if (params?.month) q.set('month', params.month)
+    return request<AnalyticsData>(`/analytics?${q}`)
+  },
+  getAnalyticsDates: () => request<AnalyticsDates>('/analytics/dates'),
   uploadCSV: async (sourceId: number, file: File, uploadedBy?: string) => {
     const form = new FormData()
     form.append('source_id', String(sourceId))
@@ -79,7 +109,7 @@ export const api = {
     if (uploadedBy) form.append('uploaded_by', uploadedBy)
     const res = await fetch(`${BASE}/upload/csv`, { method: 'POST', body: form })
     if (!res.ok) throw new Error(await res.text())
-    return res.json()
+    return res.json() as Promise<UploadResult>
   },
   bulkAction: (action: string, recordIds: number[], reviewedBy = 'analyst', reason = '') =>
     request('/records/bulk_action', {

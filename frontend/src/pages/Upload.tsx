@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { api } from '../lib/api'
-import type { DataSource } from '../lib/api'
+import type { DataSource, UploadResult } from '../lib/api'
 
 const SOURCE_INFO: Record<string, { desc: string; expected: string; icon: string }> = {
   sap_fuel: {
@@ -69,7 +69,7 @@ export default function Upload() {
   const [selectedSource, setSelectedSource] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
-  const [result, setResult] = useState<Record<string, unknown> | null>(null)
+  const [result, setResult] = useState<UploadResult | null>(null)
   const [error, setError] = useState('')
   const [dragging, setDragging] = useState(false)
   const [step, setStep] = useState<'select' | 'preview' | 'done'>('select')

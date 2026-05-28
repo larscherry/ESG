@@ -410,9 +410,6 @@ def normalize_utility_electricity(raw_record):
     return norm, warnings
 
 
-AIRPORT_DIST_CACHE = {}
-
-
 def estimate_flight_distance(origin, dest):
     o = origin.strip().upper()
     d = dest.strip().upper()

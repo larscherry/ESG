@@ -6,6 +6,8 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime
 
 from django.db import transaction
+from django.db.models import Sum, Count
+from django.db.models.functions import TruncMonth, ExtractYear, ExtractMonth
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -205,8 +207,6 @@ class UnitConversionViewSet(viewsets.ReadOnlyModelViewSet):
 
 class AnalyticsViewSet(viewsets.ViewSet):
     def list(self, request):
-        from django.db.models import Sum, Count
-        from django.db.models.functions import TruncMonth, ExtractYear
         records = NormalizedRecord.objects.all()
         source_type = request.query_params.get('source_type')
         scope = request.query_params.get('scope')
@@ -270,8 +270,6 @@ class AnalyticsViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['get'])
     def dates(self, request):
-        from django.db.models import Count
-        from django.db.models.functions import ExtractYear, ExtractMonth
         records = NormalizedRecord.objects.all()
         years = list(records.annotate(
             year=ExtractYear('activity_date')

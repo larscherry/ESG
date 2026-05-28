@@ -5,73 +5,60 @@ import {
   LineChart, Line,
   AreaChart, Area,
 } from 'recharts'
-import { CATEGORY_LABELS, SCOPE_LABELS } from '../lib/api'
+import { CATEGORY_LABELS, SCOPE_LABELS, api } from '../lib/api'
+import type { AnalyticsData } from '../lib/api'
 
 const CHART_TYPES = ['Bar', 'Pie', 'Line', 'Area'] as const
-const METRICS = [
+type ChartType = typeof CHART_TYPES[number]
+
+interface Metric { value: string; label: string }
+interface GroupBy { value: string; label: string }
+
+const METRICS: Metric[] = [
   { value: 'co2e', label: 'CO₂e (t)' },
   { value: 'qty', label: 'Quantity' },
   { value: 'count', label: 'Record Count' },
-] as const
-const GROUP_BY = [
+]
+
+const GROUP_BY: GroupBy[] = [
   { value: 'scope', label: 'Scope' },
   { value: 'category', label: 'Category' },
   { value: 'source_type', label: 'Source Type' },
   { value: 'year', label: 'Year' },
   { value: 'month', label: 'Month' },
   { value: 'status', label: 'Status' },
-] as const
+]
 
 const MONTH_NAMES = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const PIE_COLORS = ['#1ea97c', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316']
 
-function formatData(raw: any, groupBy: string, metric: string) {
-  const metricKey = metric === 'co2e' ? 'total_co2e' : metric === 'qty' ? 'total_qty' : 'count'
-
-  if (groupBy === 'scope') {
-    return (raw.by_scope || []).map((d: any) => ({
-      name: SCOPE_LABELS[d.scope] || `Scope ${d.scope}`,
-      value: d[metricKey] ?? 0,
-    }))
-  }
-  if (groupBy === 'category') {
-    return (raw.by_category || []).map((d: any) => ({
-      name: CATEGORY_LABELS[d.category] || d.category,
-      value: d[metricKey] ?? 0,
-    }))
-  }
-  if (groupBy === 'source_type') {
-    return (raw.by_source || []).map((d: any) => ({
-      name: d.source_type.replace(/_/g, ' '),
-      value: d[metricKey] ?? 0,
-    }))
-  }
-  if (groupBy === 'month') {
-    return (raw.monthly || []).map((d: any) => ({
-      name: d.month,
-      value: d[metricKey] ?? 0,
-    }))
-  }
-  if (groupBy === 'year') {
-    return (raw.yearly || []).map((d: any) => ({
-      name: d.year,
-      value: d[metricKey] ?? 0,
-    }))
-  }
-  if (groupBy === 'status') {
-    return (raw.by_status || []).map((d: any) => ({
-      name: d.status.replace(/_/g, ' '),
-      value: d.count,
-    }))
-  }
-  return []
+interface ChartDatum {
+  name: string
+  value: number
 }
 
-function ChartWidget({ chartType, data, metric }: {
-  chartType: typeof CHART_TYPES[number]
-  data: { name: string; value: number }[]
-  metric: string
-}) {
+function formatData(raw: AnalyticsData, groupBy: string, metric: string): ChartDatum[] {
+  const metricKey = metric === 'co2e' ? 'total_co2e' : metric === 'qty' ? 'total_qty' : 'count'
+  const val = (d: Record<string, unknown>): number => Number(d[metricKey]) || 0
+  switch (groupBy) {
+    case 'scope':
+      return (raw.by_scope || []).map((d) => ({ name: SCOPE_LABELS[d.scope] || `Scope ${d.scope}`, value: val(d) }))
+    case 'category':
+      return (raw.by_category || []).map((d) => ({ name: CATEGORY_LABELS[d.category] || d.category, value: val(d) }))
+    case 'source_type':
+      return (raw.by_source || []).map((d) => ({ name: d.source_type.replace(/_/g, ' '), value: val(d) }))
+    case 'month':
+      return (raw.monthly || []).map((d) => ({ name: d.month, value: val(d) }))
+    case 'year':
+      return (raw.yearly || []).map((d) => ({ name: String(d.year), value: val(d) }))
+    case 'status':
+      return (raw.by_status || []).map((d) => ({ name: d.status.replace(/_/g, ' '), value: val(d) }))
+    default:
+      return []
+  }
+}
+
+function ChartWidget({ chartType, data, metric }: { chartType: ChartType; data: ChartDatum[]; metric: string }) {
   if (data.length === 0) {
     return <div className="flex items-center justify-center h-64 text-[#9ca3af] text-base">No data available for selected filters</div>
   }
@@ -82,10 +69,10 @@ function ChartWidget({ chartType, data, metric }: {
     return (
       <ResponsiveContainer width="100%" height={400}>
         <PieChart>
-          <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={140} innerRadius={50} label={({ name, value }) => `${name}: ${Number(value).toFixed(1)}`}>
+          <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={140} innerRadius={50} label={({ name, value }: { name?: string; value?: number }) => `${name || ''}: ${Number(value || 0).toFixed(1)}`}>
             {data.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
           </Pie>
-          <Tooltip formatter={(v: any) => [Number(v).toFixed(2), valueLabel]} />
+          <Tooltip formatter={(v) => [Number(v || 0).toFixed(2), valueLabel]} />
           <Legend />
         </PieChart>
       </ResponsiveContainer>
@@ -99,7 +86,7 @@ function ChartWidget({ chartType, data, metric }: {
           <CartesianGrid stroke="#eef0f2" strokeDasharray="3 3" />
           <XAxis dataKey="name" tick={{ fill: '#374151', fontSize: 12 }} angle={-35} textAnchor="end" height={60} />
           <YAxis tick={{ fill: '#374151', fontSize: 12 }} />
-          <Tooltip formatter={(v: any) => [Number(v).toFixed(2), valueLabel]} />
+          <Tooltip formatter={(v) => [Number(v || 0).toFixed(2), valueLabel]} />
           <Line type="monotone" dataKey="value" stroke="#1ea97c" strokeWidth={2.5} dot={{ fill: '#1ea97c', r: 4 }} />
         </LineChart>
       </ResponsiveContainer>
@@ -119,7 +106,7 @@ function ChartWidget({ chartType, data, metric }: {
           <CartesianGrid stroke="#eef0f2" strokeDasharray="3 3" />
           <XAxis dataKey="name" tick={{ fill: '#374151', fontSize: 12 }} angle={-35} textAnchor="end" height={60} />
           <YAxis tick={{ fill: '#374151', fontSize: 12 }} />
-          <Tooltip formatter={(v: any) => [Number(v).toFixed(2), valueLabel]} />
+          <Tooltip formatter={(v) => [Number(v || 0).toFixed(2), valueLabel]} />
           <Area type="monotone" dataKey="value" stroke="#1ea97c" strokeWidth={2.5} fill="url(#areaGrad)" />
         </AreaChart>
       </ResponsiveContainer>
@@ -132,7 +119,7 @@ function ChartWidget({ chartType, data, metric }: {
         <CartesianGrid stroke="#eef0f2" strokeDasharray="3 3" />
         <XAxis dataKey="name" tick={{ fill: '#374151', fontSize: 12 }} angle={-35} textAnchor="end" height={60} />
         <YAxis tick={{ fill: '#374151', fontSize: 12 }} />
-        <Tooltip formatter={(v: any) => [Number(v).toFixed(2), valueLabel]} />
+        <Tooltip formatter={(v) => [Number(v || 0).toFixed(2), valueLabel]} />
         <Bar dataKey="value" fill="#1ea97c" radius={[4, 4, 0, 0]}>
           {data.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
         </Bar>
@@ -142,8 +129,8 @@ function ChartWidget({ chartType, data, metric }: {
 }
 
 export default function Analytics() {
-  const [data, setData] = useState<any>(null)
-  const [chartType, setChartType] = useState<typeof CHART_TYPES[number]>('Bar')
+  const [data, setData] = useState<AnalyticsData | null>(null)
+  const [chartType, setChartType] = useState<ChartType>('Bar')
   const [metric, setMetric] = useState('co2e')
   const [groupBy, setGroupBy] = useState('scope')
   const [selectedYear, setSelectedYear] = useState('')
@@ -153,8 +140,7 @@ export default function Analytics() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/analytics/dates')
-      .then((r) => r.json())
+    api.getAnalyticsDates()
       .then((d) => {
         setAvailableYears(d.years || [])
         setAvailableMonths(d.months || [])
@@ -164,18 +150,15 @@ export default function Analytics() {
 
   const fetchAnalytics = useCallback(() => {
     setLoading(true)
-    const params = new URLSearchParams()
-    if (selectedYear) params.set('year', selectedYear)
-    if (selectedMonth) params.set('month', selectedMonth)
-    fetch(`/api/analytics?${params.toString()}`)
-      .then((r) => r.json())
+    const params: { year?: string; month?: string } = {}
+    if (selectedYear) params.year = selectedYear
+    if (selectedMonth) params.month = selectedMonth
+    api.getAnalytics(params)
       .then((d) => { setData(d); setLoading(false) })
       .catch(() => setLoading(false))
   }, [selectedYear, selectedMonth])
 
-  useEffect(() => {
-    fetchAnalytics()
-  }, [fetchAnalytics])
+  useEffect(() => { fetchAnalytics() }, [fetchAnalytics])
 
   const chartData = data ? formatData(data, groupBy, metric) : []
 
@@ -193,10 +176,8 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* Controls */}
       <div className="rounded-2xl border border-[#eef0f2] bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         <div className="flex flex-wrap items-end gap-4">
-          {/* Date filters */}
           <div>
             <label className="block text-xs font-semibold text-[#6b7280] uppercase tracking-wider mb-1.5">Year</label>
             <select
@@ -224,7 +205,6 @@ export default function Analytics() {
             </select>
           </div>
           <div className="w-px h-8 bg-[#eef0f2] self-center" />
-          {/* Chart type */}
           <div>
             <label className="block text-xs font-semibold text-[#6b7280] uppercase tracking-wider mb-1.5">Chart</label>
             <div className="flex gap-1 rounded-lg border border-[#d1d5db] p-0.5 bg-gray-50">
@@ -268,7 +248,6 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* Chart */}
       <div className="rounded-2xl border border-[#eef0f2] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         {loading ? (
           <div className="flex items-center justify-center h-64">
@@ -279,7 +258,6 @@ export default function Analytics() {
         )}
       </div>
 
-      {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
           { label: 'Total Records', value: String(data?.total?.total_count || 0) },

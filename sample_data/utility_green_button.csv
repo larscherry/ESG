@@ -1,0 +1,64 @@
+UNITS,Meter ID,TYPE,NOTES,END DATE,USAGE,START DATE,COST
+kWh,MTR-001,Electric usage,,2024-01-31,42000,2024-01-01,5040.0
+kWh,MTR-001,Electric usage,,2024-02-28,44000,2024-02-01,5280.0
+kWh,MTR-001,Electric usage,* This was estimated,2024-03-31,46000,2024-03-01,5520.0
+kWh,MTR-001,Electric usage,,2024-04-30,48000,2024-04-01,5760.0
+kWh,MTR-001,Electric usage,,2024-05-31,50000,2024-05-01,6000.0
+kWh,MTR-001,Electric usage,* This was estimated,2024-06-30,52000,2024-06-01,6240.0
+kWh,MTR-001,Electric usage,,2024-07-31,54000,2024-07-01,6480.0
+kWh,MTR-001,Electric usage,,2024-08-31,56000,2024-08-01,6720.0
+kWh,MTR-001,Electric usage,* This was estimated,2024-09-30,58000,2024-09-01,6960.0
+kWh,MTR-001,Electric usage,,2024-10-31,60000,2024-10-01,7200.0
+kWh,MTR-001,Electric usage,,2024-11-30,62000,2024-11-01,7440.0
+kWh,MTR-001,Electric usage,* This was estimated,2024-12-31,64000,2024-12-01,7680.0
+kWh,MTR-002,Electric usage,,2024-01-31,73000,2024-01-01,8760.0
+kWh,MTR-002,Electric usage,,2024-02-28,75000,2024-02-01,9000.0
+kWh,MTR-002,Electric usage,* This was estimated,2024-03-31,77000,2024-03-01,9240.0
+kWh,MTR-002,Electric usage,,2024-04-30,79000,2024-04-01,9480.0
+kWh,MTR-002,Electric usage,,2024-05-31,81000,2024-05-01,9720.0
+kWh,MTR-002,Electric usage,* This was estimated,2024-06-30,83000,2024-06-01,9960.0
+kWh,MTR-002,Electric usage,,2024-07-31,85000,2024-07-01,10200.0
+kWh,MTR-002,Electric usage,,2024-08-31,87000,2024-08-01,10440.0
+kWh,MTR-002,Electric usage,* This was estimated,2024-09-30,89000,2024-09-01,10680.0
+kWh,MTR-002,Electric usage,,2024-10-31,91000,2024-10-01,10920.0
+kWh,MTR-002,Electric usage,,2024-11-30,93000,2024-11-01,11160.0
+kWh,MTR-002,Electric usage,* This was estimated,2024-12-31,95000,2024-12-01,11400.0
+kWh,MTR-003,Electric usage,,2024-01-31,104000,2024-01-01,12480.0
+kWh,MTR-003,Electric usage,,2024-02-28,106000,2024-02-01,12720.0
+kWh,MTR-003,Electric usage,* This was estimated,2024-03-31,108000,2024-03-01,12960.0
+kWh,MTR-003,Electric usage,,2024-04-30,110000,2024-04-01,13200.0
+kWh,MTR-003,Electric usage,,2024-05-31,112000,2024-05-01,13440.0
+kWh,MTR-003,Electric usage,* This was estimated,2024-06-30,114000,2024-06-01,13680.0
+kWh,MTR-003,Electric usage,,2024-07-31,116000,2024-07-01,13920.0
+kWh,MTR-003,Electric usage,,2024-08-31,118000,2024-08-01,14160.0
+kWh,MTR-003,Electric usage,* This was estimated,2024-09-30,120000,2024-09-01,14400.0
+kWh,MTR-003,Electric usage,,2024-10-31,122000,2024-10-01,14640.0
+kWh,MTR-003,Electric usage,,2024-11-30,124000,2024-11-01,14880.0
+kWh,MTR-003,Electric usage,* This was estimated,2024-12-31,126000,2024-12-01,15120.0
+kWh,MTR-004,Electric usage,,2024-01-31,135000,2024-01-01,16200.0
+kWh,MTR-004,Electric usage,,2024-02-28,137000,2024-02-01,16440.0
+kWh,MTR-004,Electric usage,* This was estimated,2024-03-31,139000,2024-03-01,16680.0
+kWh,MTR-004,Electric usage,,2024-04-30,141000,2024-04-01,16920.0
+kWh,MTR-004,Electric usage,,2024-05-31,143000,2024-05-01,17160.0
+kWh,MTR-004,Electric usage,* This was estimated,2024-06-30,145000,2024-06-01,17400.0
+kWh,MTR-004,Electric usage,,2024-07-31,147000,2024-07-01,17640.0
+kWh,MTR-004,Electric usage,,2024-08-31,149000,2024-08-01,17880.0
+kWh,MTR-004,Electric usage,* This was estimated,2024-09-30,151000,2024-09-01,18120.0
+kWh,MTR-004,Electric usage,,2024-10-31,153000,2024-10-01,18360.0
+kWh,MTR-004,Electric usage,,2024-11-30,155000,2024-11-01,18600.0
+kWh,MTR-004,Electric usage,* This was estimated,2024-12-31,157000,2024-12-01,18840.0
+kWh,MTR-005,Electric usage,,2024-01-31,166000,2024-01-01,19920.0
+kWh,MTR-005,Electric usage,,2024-02-28,168000,2024-02-01,20160.0
+kWh,MTR-005,Electric usage,* This was estimated,2024-03-31,170000,2024-03-01,20400.0
+kWh,MTR-005,Electric usage,,2024-04-30,172000,2024-04-01,20640.0
+kWh,MTR-005,Electric usage,,2024-05-31,174000,2024-05-01,20880.0
+kWh,MTR-005,Electric usage,* This was estimated,2024-06-30,176000,2024-06-01,21120.0
+kWh,MTR-005,Electric usage,,2024-07-31,178000,2024-07-01,21360.0
+kWh,MTR-005,Electric usage,,2024-08-31,180000,2024-08-01,21600.0
+kWh,MTR-005,Electric usage,* This was estimated,2024-09-30,182000,2024-09-01,21840.0
+kWh,MTR-005,Electric usage,,2024-10-31,184000,2024-10-01,22080.0
+kWh,MTR-005,Electric usage,,2024-11-30,186000,2024-11-01,22320.0
+kWh,MTR-005,Electric usage,* This was estimated,2024-12-31,188000,2024-12-01,22560.0
+MWh,MTR-006,Electric usage,,2024-04-30,950000,2024-04-01,11400000.00
+kWh,MTR-001,Electric usage,,2024-01-31,,2024-01-01,
+kWh,MTR-001,Electric usage,Unusually high,2024-01-31,2500000,2024-01-01,300000.00

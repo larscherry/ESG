@@ -1,0 +1,80 @@
+Amount,Destination,Location,Days,CheckOut,Currency,TransactionDate,Distance,Origin,CheckIn,Quantity,ExpenseType,Employee,Description,Nights
+1250,LHR,,,,USD,2024-01-01,,JFK,,1,AIRFR,JSmith,JFK-LHR flight,
+890,ORD,,,,USD,2024-02-08,,SFO,,1,AIRFR,JSmith,SFO-ORD flight,
+2100,NRT,,,,USD,2024-03-15,,LAX,,1,AIRFR,JSmith,LAX-NRT flight,
+600,LAX,,,,USD,2024-04-22,,JFK,,1,AIRFR,JSmith,JFK-LAX flight,
+450,MIA,,,,USD,2024-05-01,,ORD,,1,AIRFR,JSmith,ORD-MIA flight,
+180,CDG,,,,USD,2024-06-08,,LHR,,1,AIRFR,JSmith,LHR-CDG flight,
+320,SEA,,,,USD,2024-07-15,,SFO,,1,AIRFR,JSmith,SFO-SEA flight,
+750,HKG,,,,USD,2024-08-22,,NRT,,1,AIRFR,JSmith,NRT-HKG flight,
+1250,LHR,,,,USD,2024-02-04,,JFK,,1,AIRFR,AGarcia,JFK-LHR flight,
+890,ORD,,,,USD,2024-03-11,,SFO,,1,AIRFR,AGarcia,SFO-ORD flight,
+2100,NRT,,,,USD,2024-04-18,,LAX,,1,AIRFR,AGarcia,LAX-NRT flight,
+600,LAX,,,,USD,2024-05-25,,JFK,,1,AIRFR,AGarcia,JFK-LAX flight,
+450,MIA,,,,USD,2024-06-04,,ORD,,1,AIRFR,AGarcia,ORD-MIA flight,
+180,CDG,,,,USD,2024-07-11,,LHR,,1,AIRFR,AGarcia,LHR-CDG flight,
+320,SEA,,,,USD,2024-08-18,,SFO,,1,AIRFR,AGarcia,SFO-SEA flight,
+750,HKG,,,,USD,2024-09-25,,NRT,,1,AIRFR,AGarcia,NRT-HKG flight,
+1250,LHR,,,,USD,2024-03-07,,JFK,,1,AIRFR,RNakamura,JFK-LHR flight,
+890,ORD,,,,USD,2024-04-14,,SFO,,1,AIRFR,RNakamura,SFO-ORD flight,
+2100,NRT,,,,USD,2024-05-21,,LAX,,1,AIRFR,RNakamura,LAX-NRT flight,
+600,LAX,,,,USD,2024-06-28,,JFK,,1,AIRFR,RNakamura,JFK-LAX flight,
+450,MIA,,,,USD,2024-07-07,,ORD,,1,AIRFR,RNakamura,ORD-MIA flight,
+180,CDG,,,,USD,2024-08-14,,LHR,,1,AIRFR,RNakamura,LHR-CDG flight,
+320,SEA,,,,USD,2024-09-21,,SFO,,1,AIRFR,RNakamura,SFO-SEA flight,
+750,HKG,,,,USD,2024-10-28,,NRT,,1,AIRFR,RNakamura,NRT-HKG flight,
+1250,LHR,,,,USD,2024-04-10,,JFK,,1,AIRFR,MJones,JFK-LHR flight,
+890,ORD,,,,USD,2024-05-17,,SFO,,1,AIRFR,MJones,SFO-ORD flight,
+2100,NRT,,,,USD,2024-06-24,,LAX,,1,AIRFR,MJones,LAX-NRT flight,
+600,LAX,,,,USD,2024-07-03,,JFK,,1,AIRFR,MJones,JFK-LAX flight,
+450,MIA,,,,USD,2024-08-10,,ORD,,1,AIRFR,MJones,ORD-MIA flight,
+180,CDG,,,,USD,2024-09-17,,LHR,,1,AIRFR,MJones,LHR-CDG flight,
+320,SEA,,,,USD,2024-10-24,,SFO,,1,AIRFR,MJones,SFO-SEA flight,
+750,HKG,,,,USD,2024-11-03,,NRT,,1,AIRFR,MJones,NRT-HKG flight,
+1250,LHR,,,,USD,2024-05-13,,JFK,,1,AIRFR,LWang,JFK-LHR flight,
+890,ORD,,,,USD,2024-06-20,,SFO,,1,AIRFR,LWang,SFO-ORD flight,
+2100,NRT,,,,USD,2024-07-27,,LAX,,1,AIRFR,LWang,LAX-NRT flight,
+600,LAX,,,,USD,2024-08-06,,JFK,,1,AIRFR,LWang,JFK-LAX flight,
+450,MIA,,,,USD,2024-09-13,,ORD,,1,AIRFR,LWang,ORD-MIA flight,
+180,CDG,,,,USD,2024-10-20,,LHR,,1,AIRFR,LWang,LHR-CDG flight,
+320,SEA,,,,USD,2024-11-27,,SFO,,1,AIRFR,LWang,SFO-SEA flight,
+750,HKG,,,,USD,2024-12-06,,NRT,,1,AIRFR,LWang,NRT-HKG flight,
+850,,,,2024-09-17,USD,2024-09-14,,,2024-09-14,,HOTEL,JSmith,London Hyatt,3
+420,,,,2024-06-09,USD,2024-06-07,,,2024-06-07,,HOTEL,JSmith,Chicago Hyatt,2
+1200,,,,2024-06-14,USD,2024-06-09,,,2024-06-09,,HOTEL,JSmith,Tokyo Hyatt,5
+950,,,,2024-08-22,USD,2024-08-18,,,2024-08-18,,HOTEL,JSmith,Paris Marriott,4
+1500,,,,2024-07-19,USD,2024-07-16,,,2024-07-16,,HOTEL,JSmith,Zurich Hilton,3
+850,,,,2024-06-19,USD,2024-06-16,,,2024-06-16,,HOTEL,AGarcia,London Hyatt,3
+420,,,,2024-03-22,USD,2024-03-20,,,2024-03-20,,HOTEL,AGarcia,Chicago Hyatt,2
+1200,,,,2024-11-09,USD,2024-11-04,,,2024-11-04,,HOTEL,AGarcia,Tokyo Marriott,5
+950,,,,2024-09-14,USD,2024-09-10,,,2024-09-10,,HOTEL,AGarcia,Paris Hyatt,4
+1500,,,,2024-08-06,USD,2024-08-03,,,2024-08-03,,HOTEL,AGarcia,Zurich Marriott,3
+850,,,,2024-08-19,USD,2024-08-16,,,2024-08-16,,HOTEL,RNakamura,London Marriott,3
+420,,,,2024-07-07,USD,2024-07-05,,,2024-07-05,,HOTEL,RNakamura,Chicago Hilton,2
+1200,,,,2024-07-12,USD,2024-07-07,,,2024-07-07,,HOTEL,RNakamura,Tokyo Hilton,5
+950,,,,2024-08-13,USD,2024-08-09,,,2024-08-09,,HOTEL,RNakamura,Paris Marriott,4
+1500,,,,2024-01-23,USD,2024-01-20,,,2024-01-20,,HOTEL,RNakamura,Zurich Hilton,3
+300,,London,2,,USD,2024-01-27,,,,,CAR_RENTAL,JSmith,London,
+150,Lyon,,,,EUR,2024-09-27,465,Paris,,,RAIL,JSmith,Paris-Lyon,
+45,Yokohama,,,,USD,2024-08-21,30,Tokyo,,,BUS,JSmith,Tokyo-Yokohama,
+85,,,,,GBP,2024-05-14,,,,,MEALS,JSmith,Client dinner,
+180,,Chicago,2,,USD,2024-01-27,,,,,CAR_RENTAL,JSmith,Chicago,
+120,,,,,USD,2024-05-14,,,,,MEALS,JSmith,Team lunch,
+300,,London,2,,USD,2024-07-14,,,,,CAR_RENTAL,AGarcia,London,
+150,Lyon,,,,EUR,2024-11-04,465,Paris,,,RAIL,AGarcia,Paris-Lyon,
+45,Yokohama,,,,USD,2024-03-17,30,Tokyo,,,BUS,AGarcia,Tokyo-Yokohama,
+85,,,,,GBP,2024-10-03,,,,,MEALS,AGarcia,Client dinner,
+180,,Chicago,2,,USD,2024-07-14,,,,,CAR_RENTAL,AGarcia,Chicago,
+120,,,,,USD,2024-10-03,,,,,MEALS,AGarcia,Team lunch,
+300,,London,2,,USD,2024-02-27,,,,,CAR_RENTAL,RNakamura,London,
+150,Lyon,,,,EUR,2024-03-19,465,Paris,,,RAIL,RNakamura,Paris-Lyon,
+45,Yokohama,,,,USD,2024-01-28,30,Tokyo,,,BUS,RNakamura,Tokyo-Yokohama,
+85,,,,,GBP,2024-08-02,,,,,MEALS,RNakamura,Client dinner,
+180,,Chicago,2,,USD,2024-02-27,,,,,CAR_RENTAL,RNakamura,Chicago,
+120,,,,,USD,2024-08-02,,,,,MEALS,RNakamura,Team lunch,
+300,,London,2,,USD,2024-10-17,,,,,CAR_RENTAL,MJones,London,
+150,Lyon,,,,EUR,2024-06-25,465,Paris,,,RAIL,MJones,Paris-Lyon,
+45,Yokohama,,,,USD,2024-01-16,30,Tokyo,,,BUS,MJones,Tokyo-Yokohama,
+85,,,,,GBP,2024-05-10,,,,,MEALS,MJones,Client dinner,
+180,,Chicago,2,,USD,2024-10-17,,,,,CAR_RENTAL,MJones,Chicago,
+120,,,,,USD,2024-05-10,,,,,MEALS,MJones,Team lunch,

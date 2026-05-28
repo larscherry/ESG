@@ -1,29 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { api, SCOPE_LABELS, STATUS_COLORS, CATEGORY_LABELS } from '../lib/api'
+import { api, STATUS_COLORS, CATEGORY_LABELS } from '../lib/api'
 import type { IngestionBatch, NormalizedRecord, SourceRecord } from '../lib/api'
-
-function ConfirmDialog({ open, title, message, onConfirm, onCancel }: {
-  open: boolean; title: string; message: string; onConfirm: () => void; onCancel: () => void
-}) {
-  if (!open) return null
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={onCancel}>
-      <div className="bg-white rounded-2xl p-6 shadow-xl max-w-sm w-full mx-4 border border-[#eef0f2]" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold text-[#1a1a1a]">{title}</h3>
-        <p className="text-sm text-[#6b7280] mt-2">{message}</p>
-        <div className="flex gap-2 mt-5 justify-end">
-          <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-[#6b7280] hover:bg-gray-100 rounded-lg transition-colors">
-            Cancel
-          </button>
-          <button onClick={onConfirm} className="px-4 py-2 text-sm font-medium bg-[#1ea97c] text-white rounded-lg hover:bg-[#178f69] transition-colors">
-            Confirm
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
+import ConfirmDialog from '../components/ConfirmDialog'
+import RecordDetail from './RecordDetail'
 
 type SortKey = 'scope' | 'category' | 'activity_date' | 'quantity' | 'status' | 'co2e'
 type SortDir = 'asc' | 'desc'
@@ -432,126 +412,12 @@ export default function Review() {
           {expandedRow !== null && (() => {
             const expandedRecord = filtered.find((r) => r.id === expandedRow)
             if (!expandedRecord) return null
-            const sr = expandedRecord.source_record ? sourceRecords.get(expandedRecord.source_record) : null
             return (
-              <div key={`detail-${expandedRecord.id}`} id={`detail-${expandedRecord.id}`} className="bg-[#e8f6ef]/20 border-t border-[#eef0f2] px-6 py-5 overflow-visible space-y-6">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="rounded-xl border border-[#eef0f2] bg-white p-4">
-                    <h4 className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider mb-3 flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                      Full Original Record
-                    </h4>
-                    <table className="w-full text-xs">
-                      <tbody>
-                        {sr ? (
-                          (() => {
-                            const metaRows: [string, string][] = [
-                              ['Row Number', String(sr.row_number)],
-                              ['Status', sr.status],
-                              ['Source Type', expandedRecord.source_type.replace(/_/g, ' ')],
-                            ];
-                            const dataRows = Object.entries(sr.raw_data || {});
-                            return [...metaRows, ...dataRows].map(([k, v]) => (
-                              <tr key={k} className="border-b border-[#eef0f2]">
-                                <td className="py-1.5 pr-4 text-[#6b7280] font-mono w-2/5 whitespace-nowrap">{k}</td>
-                                <td className="py-1.5 font-mono text-[#1a1a1a] break-all">{String(v || '')}</td>
-                              </tr>
-                            ));
-                          })()
-                        ) : (
-                          Object.entries(expandedRecord.raw_values || {}).map(([k, v]) => (
-                            <tr key={k} className="border-b border-[#eef0f2]">
-                              <td className="py-1.5 pr-4 text-[#6b7280] font-mono w-2/5 whitespace-nowrap">{k}</td>
-                              <td className="py-1.5 font-mono text-[#1a1a1a] break-all">{String(v)}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="rounded-xl border border-[#eef0f2] bg-white p-4">
-                    <h4 className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider mb-3 flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      Normalized Values
-                    </h4>
-                    <table className="w-full text-xs">
-                      <tbody>
-                        {[
-                          { label: 'Quantity', value: `${expandedRecord.quantity} ${expandedRecord.unit}`, diff: expandedRecord.raw_values?.raw_quantity ? `${expandedRecord.raw_values.raw_quantity} ${expandedRecord.raw_values.raw_unit}` : null },
-                          { label: 'Activity Date', value: expandedRecord.activity_date, diff: expandedRecord.raw_values?.start_date || expandedRecord.raw_values?.raw_date || null },
-                          { label: 'Scope', value: SCOPE_LABELS[expandedRecord.scope] },
-                          { label: 'Category', value: CATEGORY_LABELS[expandedRecord.category] || expandedRecord.category },
-                          { label: 'CO₂e', value: expandedRecord.co2e ? `${Number(expandedRecord.co2e).toFixed(4)} ${expandedRecord.co2e_unit}` : 'Not calculated' },
-                          { label: 'Facility', value: expandedRecord.facility || '—' },
-                          { label: 'Description', value: expandedRecord.description || '—' },
-                          { label: 'Source Type', value: expandedRecord.source_type.replace(/_/g, ' ') },
-                        ].map(({ label, value, diff }) => (
-                          <tr key={label} className="border-b border-[#eef0f2]">
-                            <td className="py-1.5 pr-4 text-[#6b7280] w-1/3 whitespace-nowrap">{label}</td>
-                            <td className="py-1.5">
-                              <span className="font-mono text-[#1a1a1a]">{value}</span>
-                              {diff && String(diff) !== String(value) && (
-                                <span className="ml-2 text-[10px] text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded">
-                                  was: {diff}
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {sr && (
-                  <div className="rounded-xl border border-[#eef0f2] bg-white p-4">
-                    <h4 className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider mb-3">Changes from Source</h4>
-                    <div className="text-xs font-mono space-y-1.5">
-                      {(() => {
-                        const rawQty = String(expandedRecord.raw_values?.raw_quantity ?? sr.raw_data?.Menge ?? sr.raw_data?.USAGE ?? '')
-                        const rawUnit = String(expandedRecord.raw_values?.raw_unit ?? sr.raw_data?.MEINS ?? sr.raw_data?.UNITS ?? '')
-                        const changes: { field: string; from: string; to: string }[] = []
-                        if (rawQty && String(expandedRecord.quantity) !== rawQty) changes.push({ field: 'Quantity', from: rawQty, to: String(expandedRecord.quantity) })
-                        if (rawUnit && expandedRecord.unit !== rawUnit.toLowerCase()) changes.push({ field: 'Unit', from: rawUnit, to: expandedRecord.unit })
-                        if (changes.length === 0) return <p className="text-[#9ca3af] italic">No changes — raw values match normalized values</p>
-                        return changes.map((c) => (
-                          <div key={c.field} className="flex items-center gap-3 text-[#6b7280]">
-                            <span className="text-[#9ca3af] w-16 text-right text-[10px] uppercase tracking-wider">{c.field}</span>
-                            <span className="text-[#9ca3af] line-through">{c.from}</span>
-                            <span className="text-[#1ea97c] font-bold">→</span>
-                            <span className="text-[#1a1a1a] font-medium">{c.to}</span>
-                          </div>
-                        ))
-                      })()}
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center gap-3 pt-2">
-                  <button
-                    onClick={() => { setSelected(new Set([expandedRecord.id])); setConfirmAction({ action: 'approve' }) }}
-                    className="px-5 py-2 text-sm font-medium bg-[#1ea97c] text-white rounded-xl hover:bg-[#178f69] transition-all shadow-sm"
-                  >
-                    ✓ Approve
-                  </button>
-                  <button
-                    onClick={() => { setSelected(new Set([expandedRecord.id])); setConfirmAction({ action: 'reject' }) }}
-                    className="px-5 py-2 text-sm font-medium bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all shadow-sm"
-                  >
-                    ✗ Reject
-                  </button>
-                  <button
-                    onClick={() => { setSelected(new Set([expandedRecord.id])); setConfirmAction({ action: 'flag' }) }}
-                    className="px-5 py-2 text-sm font-medium bg-orange-400 text-white rounded-xl hover:bg-orange-500 transition-all shadow-sm"
-                  >
-                    ⚑ Flag
-                  </button>
-                  {expandedRecord.rejection_reason && (
-                    <span className="text-xs text-red-500 ml-2">Reason: {expandedRecord.rejection_reason}</span>
-                  )}
-                </div>
-              </div>
+              <RecordDetail
+                record={expandedRecord}
+                sourceRecords={sourceRecords}
+                onAction={(action, ids) => { setSelected(ids); setConfirmAction({ action }) }}
+              />
             )
           })()}
         </div>

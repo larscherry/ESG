@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -o errexit
 
+echo "=== Installing Python dependencies ==="
+pip install -r requirements.txt
+
 echo "=== Installing Node.js ==="
 # Render provides nvm; use it to install Node
 export NVM_DIR="$HOME/.nvm"

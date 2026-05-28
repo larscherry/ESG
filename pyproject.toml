@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "breathe-esg"
+version = "0.1.0"
+description = "ESG Data Ingestion & Review Platform"
+authors = []
+
+[tool.poetry.dependencies]
+python = "^3.12"
+django = ">=6.0"
+djangorestframework = ">=3.17"
+django-cors-headers = ">=4.9"
+dj-database-url = ">=2.0"
+psycopg2-binary = ">=2.9"
+gunicorn = ">=26.0"
+whitenoise = ">=6.12"
+
+[build-system]
+requires = ["poetry-core>=2.0"]
+build-backend = "poetry.core.masonry.api"

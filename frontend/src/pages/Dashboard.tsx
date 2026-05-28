@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { api, STATUS_COLORS } from '../lib/api'
-import type { IngestionBatch, DataSource, AuditLog } from '../lib/api'
+import type { IngestionBatch, DataSource, AuditLog, AnalyticsData } from '../lib/api'
 import type { LayoutContext } from '../Layout'
 
 function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
@@ -30,11 +30,11 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { esgTab, categoryFilter, sourceFilter } = useOutletContext<LayoutContext>()
+  const { esgTab, sourceFilter } = useOutletContext<LayoutContext>()
   const [batches, setBatches] = useState<IngestionBatch[]>([])
   const [_sources, setSources] = useState<DataSource[]>([])
   const [logs, setLogs] = useState<AuditLog[]>([])
-  const [records, setRecords] = useState<{ scope: number; co2e: number; category: string; activity_date: string; quantity: number; source_type: string }[]>([])
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -46,44 +46,18 @@ export default function Dashboard() {
         setLoading(false)
       }
     )
-    api.getRecords({}).then((r) => {
-      setRecords(r.results.map((rec) => ({
-        scope: rec.scope,
-        co2e: rec.co2e ? Number(rec.co2e) : 0,
-        category: rec.category,
-        activity_date: rec.activity_date,
-        quantity: Number(rec.quantity),
-        source_type: rec.source_type,
-      })))
-    }).catch(() => {})
   }, [])
 
-  let filteredRecords = records
-  if (esgTab === 'Social') {
-    filteredRecords = filteredRecords.filter((r) => r.scope === 2)
-  } else if (esgTab === 'Governance') {
-    filteredRecords = filteredRecords.filter((r) => r.scope === 3)
-  } else {
-    filteredRecords = filteredRecords.filter((r) => r.scope === 1 || r.scope === 2 || r.scope === 3)
-  }
-
-  if (categoryFilter === 'Energy') {
-    filteredRecords = filteredRecords.filter((r) => ['diesel', 'gasoline', 'natural_gas', 'grid_electricity'].includes(r.category))
-  } else if (categoryFilter === 'Waste') {
-    filteredRecords = filteredRecords.filter(() => false)
-  } else if (categoryFilter === 'Water') {
-    filteredRecords = filteredRecords.filter(() => false)
-  } else if (categoryFilter === 'Air') {
-    filteredRecords = filteredRecords.filter((r) => ['jet_fuel', 'kerosene'].includes(r.category))
-  } else if (categoryFilter === 'Biodiversity') {
-    filteredRecords = filteredRecords.filter(() => false)
-  } else if (categoryFilter === 'GHG Emissions') {
-    filteredRecords = filteredRecords.filter((r) => r.co2e > 0)
-  }
-
-  if (sourceFilter) {
-    filteredRecords = filteredRecords.filter((r) => r.source_type === _sources.find((s) => s.id === sourceFilter)?.source_type)
-  }
+  useEffect(() => {
+    const params: { scope?: string; source_type?: string } = {}
+    if (esgTab === 'Social') params.scope = '2'
+    else if (esgTab === 'Governance') params.scope = '3'
+    if (sourceFilter) {
+      const src = _sources.find((s) => s.id === sourceFilter)
+      if (src) params.source_type = src.source_type
+    }
+    api.getAnalytics(params).then(setAnalytics).catch(() => {})
+  }, [esgTab, sourceFilter, _sources])
 
   if (loading) {
     return (
@@ -104,23 +78,28 @@ export default function Dashboard() {
   const approved = batches.filter((b) => b.status === 'approved').length
   const locked = batches.filter((b) => b.status === 'locked').length
 
-  const totalCo2e = filteredRecords.reduce((s, r) => s + r.co2e, 0)
-  const scope1 = filteredRecords.filter((r) => r.scope === 1).reduce((s, r) => s + r.co2e, 0)
-  const scope2 = filteredRecords.filter((r) => r.scope === 2).reduce((s, r) => s + r.co2e, 0)
-  const scope3 = filteredRecords.filter((r) => r.scope === 3).reduce((s, r) => s + r.co2e, 0)
+  const totalCo2e = Number(analytics?.total?.total_co2e || 0)
+  const scopeMap = useMemo(() => {
+    const m: Record<number, number> = { 1: 0, 2: 0, 3: 0 }
+    for (const s of analytics?.by_scope || []) m[s.scope] = Number(s.total_co2e) || 0
+    return m
+  }, [analytics])
+  const scope1 = scopeMap[1]
+  const scope2 = scopeMap[2]
+  const scope3 = scopeMap[3]
 
-  const monthlyUsage = (() => {
-    const byMonth: Record<string, number> = {}
-    filteredRecords.filter((r) => r.category === 'grid_electricity').forEach((r) => {
-      const month = r.activity_date.slice(0, 7)
-      byMonth[month] = (byMonth[month] || 0) + r.quantity
-    })
-    return Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => Math.round(v / 1000))
-  })()
+  const monthlyCounts = useMemo(() => {
+    if (!analytics?.monthly) return []
+    return analytics.monthly.map((m) => ({
+      month: m.month || '',
+      count: m.count || 0,
+    }))
+  }, [analytics])
 
   const passRate = totalRecords > 0 ? Math.round((totalPassed / totalRecords) * 100) : 0
   const failRate = totalRecords > 0 ? Math.round((totalFailed / totalRecords) * 100) : 0
   const susRate = totalRecords > 0 ? Math.round((totalSuspicious / totalRecords) * 100) : 0
+  const recordCount = analytics?.total?.total_count || 0
 
   const scopeColors: Record<number, string> = { 1: 'from-rose-500 to-pink-600', 2: 'from-blue-500 to-cyan-600', 3: 'from-amber-500 to-orange-600' }
   const scopeBgColors: Record<number, string> = { 1: 'bg-rose-100 text-rose-700', 2: 'bg-blue-100 text-blue-700', 3: 'bg-amber-100 text-amber-700' }
@@ -176,7 +155,7 @@ export default function Dashboard() {
           <div className="rounded-2xl border border-[#eef0f2] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-[#1a1a1a]">Emissions by Scope</h2>
-              <span className="text-xs text-[#9ca3af]">{filteredRecords.length} records</span>
+              <span className="text-xs text-[#9ca3af]">{recordCount} records</span>
             </div>
             <div className="space-y-4">
               {[
@@ -287,18 +266,18 @@ export default function Dashboard() {
                 <MiniBar value={susRate} max={100} color="bg-gradient-to-r from-amber-400 to-yellow-500" />
               </div>
             </div>
-            {monthlyUsage.length > 0 && (
+            {monthlyCounts.length > 0 && (
               <div className="mt-6 pt-4 border-t border-[#eef0f2]">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-[#1a1a1a]">Monthly Usage (MWh)</span>
-                  <Sparkline data={monthlyUsage} color="#10b981" />
+                  <span className="text-sm font-medium text-[#1a1a1a]">Records per Month</span>
+                  <Sparkline data={monthlyCounts.map((m) => m.count)} color="#10b981" />
                 </div>
                 <div className="flex items-end gap-1 h-16">
-                  {monthlyUsage.map((v, i) => (
+                  {monthlyCounts.map((m, i) => (
                     <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
                       <div
                         className="w-full rounded-t bg-gradient-to-t from-emerald-400 to-teal-400 transition-all duration-500"
-                        style={{ height: `${(v / Math.max(...monthlyUsage)) * 48}px` }}
+                        style={{ height: `${(m.count / Math.max(...monthlyCounts.map((x) => x.count))) * 48}px` }}
                       />
                     </div>
                   ))}

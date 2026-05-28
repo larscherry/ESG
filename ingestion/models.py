@@ -229,6 +229,17 @@ class NormalizedRecord(models.Model):
         return f"NR {self.id} - {self.get_category_display()} - {self.quantity} {self.unit}"
 
 
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='members')
+
+    class Meta:
+        ordering = ['user__username']
+
+    def __str__(self):
+        return f"{self.user.username} @ {self.organization.name}"
+
+
 class AuditLog(models.Model):
     ACTION_CHOICES = [
         ('batch_created', 'Batch Created'),

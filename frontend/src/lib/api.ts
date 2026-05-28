@@ -1,27 +1,21 @@
 const BASE = '/api'
 
-function getToken(): string | null {
-  return localStorage.getItem('auth_token')
-}
-
-export function setToken(token: string | null) {
-  if (token) localStorage.setItem('auth_token', token)
-  else localStorage.removeItem('auth_token')
-}
-
-export function isAuthenticated(): boolean {
-  return !!getToken()
+function getCSRFToken(): string {
+  const name = 'csrftoken'
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`))
+  return match ? decodeURIComponent(match[1]) : ''
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = {}
-  const token = getToken()
-  if (token) headers['Authorization'] = `Token ${token}`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  const method = options?.method || 'GET'
+  if (method !== 'GET' && method !== 'HEAD') {
+    headers['X-CSRFToken'] = getCSRFToken()
+  }
 
-  const isFormData = options?.body instanceof FormData
-  if (!isFormData) headers['Content-Type'] = 'application/json'
-
-  const res = await fetch(`${BASE}${url}`, { headers, ...options })
+  const res = await fetch(`${BASE}${url}`, { headers, credentials: 'include', ...options })
   if (!res.ok) {
     let message = res.statusText
     try {
@@ -33,6 +27,14 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     throw new Error(message)
   }
   return res.json()
+}
+
+export async function checkAuth(): Promise<AuthUser | null> {
+  try {
+    return await request<AuthUser>('/auth/me')
+  } catch {
+    return null
+  }
 }
 
 export interface Organization {
@@ -106,10 +108,11 @@ export interface AuthUser {
 
 export const api = {
   login: (username: string, password: string) =>
-    request<{ token: string; user: AuthUser }>('/auth/login', {
+    request<{ user: AuthUser }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     }),
+  logout: () => request<{ detail: string }>('/auth/logout', { method: 'POST' }),
   getMe: () => request<AuthUser>('/auth/me'),
   getOrganizations: () => request<PaginatedResponse<Organization>>('/organizations'),
   getSources: (orgId?: number) =>
@@ -128,10 +131,12 @@ export const api = {
     request<PaginatedResponse<SourceRecord>>(`/source-records?batch=${batchId}`),
   getAuditLogs: (orgId?: number) =>
     request<PaginatedResponse<AuditLog>>(`/audit-logs${orgId ? `?organization=${orgId}` : ''}`),
-  getAnalytics: (params?: { year?: string; month?: string }) => {
+  getAnalytics: (params?: { year?: string; month?: string; scope?: string; source_type?: string }) => {
     const q = new URLSearchParams()
     if (params?.year) q.set('year', params.year)
     if (params?.month) q.set('month', params.month)
+    if (params?.scope) q.set('scope', params.scope)
+    if (params?.source_type) q.set('source_type', params.source_type)
     return request<AnalyticsData>(`/analytics?${q}`)
   },
   getAnalyticsDates: () => request<AnalyticsDates>('/analytics/dates'),
@@ -139,10 +144,13 @@ export const api = {
     const form = new FormData()
     form.append('source_id', String(sourceId))
     form.append('file', file)
-    const token = getToken()
-    const headers: Record<string, string> = {}
-    if (token) headers['Authorization'] = `Token ${token}`
-    const res = await fetch(`${BASE}/upload/csv`, { method: 'POST', body: form, headers })
+    const method = 'POST'
+    const res = await fetch(`${BASE}/upload/csv`, {
+      method,
+      body: form,
+      credentials: 'include',
+      headers: { 'X-CSRFToken': getCSRFToken() },
+    })
     if (!res.ok) {
       let message = res.statusText
       try { const body = await res.json(); message = body.error || body.detail || JSON.stringify(body) }

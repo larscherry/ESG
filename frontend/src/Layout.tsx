@@ -1,6 +1,6 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useState, useRef } from 'react'
-import { api, setToken, isAuthenticated } from './lib/api'
+import { api } from './lib/api'
 import type { DataSource, IngestionBatch, AuditLog, AuthUser } from './lib/api'
 import {
   LayoutGrid,
@@ -68,7 +68,6 @@ export default function Layout() {
   const profileDropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!isAuthenticated()) return
     api.getMe().then(setUser).catch(() => {})
     api.getSources().then((s) => setSources(s.results)).catch(() => {})
     api.getBatches().then((b) => setBatches(b.results)).catch(() => {})
@@ -152,7 +151,7 @@ export default function Layout() {
         </div>
         <div className="flex-1" />
         <button
-          onClick={() => { setToken(null); navigate('/login') }}
+          onClick={() => { api.logout(); navigate('/login') }}
           className="h-10 w-10 rounded-md flex items-center justify-center text-[#e94e1b] hover:bg-[#e94e1b]/10 transition-colors"
           title="Logout"
         >
@@ -289,7 +288,7 @@ export default function Layout() {
                   </button>
                   <div className="border-t border-[#eef0f2] mt-1 pt-1">
                     <button
-                      onClick={() => { setToken(null); navigate('/login') }}
+                      onClick={() => { api.logout(); navigate('/login') }}
                       className="w-full text-left px-4 py-2.5 text-sm text-[#e94e1b] hover:bg-red-50 flex items-center gap-3 transition-colors font-semibold"
                     >
                       <LogOut className="h-4 w-4" />

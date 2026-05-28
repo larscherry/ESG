@@ -31,8 +31,7 @@ echo "=== Collecting static files ==="
 python manage.py collectstatic --noinput --clear
 
 echo "=== Running migrations ==="
-python manage.py migrate --run-syncdb
-python manage.py migrate authtoken
+python manage.py migrate
 
 echo "=== Seeding sample data ==="
 python manage.py seed_sample_data

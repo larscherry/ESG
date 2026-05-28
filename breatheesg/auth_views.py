@@ -1,8 +1,15 @@
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, login as django_login, logout as django_logout
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from rest_framework.authtoken.models import Token
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@ensure_csrf_cookie
+def csrf_token(request):
+    return Response({'detail': 'CSRF cookie set'})
 
 
 @api_view(['POST'])
@@ -12,9 +19,8 @@ def login(request):
     password = request.data.get('password', '')
     user = authenticate(username=username, password=password)
     if user:
-        token, _ = Token.objects.get_or_create(user=user)
+        django_login(request, user)
         return Response({
-            'token': token.key,
             'user': {
                 'id': user.id,
                 'username': user.username,
@@ -34,3 +40,9 @@ def me(request):
         'email': user.email or '',
         'is_staff': user.is_staff,
     })
+
+
+@api_view(['POST'])
+def logout(request):
+    django_logout(request)
+    return Response({'detail': 'Logged out'})

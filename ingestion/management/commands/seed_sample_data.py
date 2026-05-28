@@ -11,7 +11,7 @@ from rest_framework.authtoken.models import Token
 from ingestion.models import (
     Organization, DataSource, IngestionBatch,
     SourceRecord, NormalizedRecord, EmissionFactor,
-    UnitConversion, AuditLog,
+    UnitConversion, AuditLog, UserProfile,
 )
 from ingestion.normalizer import normalize_batch
 
@@ -328,5 +328,5 @@ class Command(BaseCommand):
         if created:
             user.set_password('breathe2024')
             user.save()
-        token, _ = Token.objects.get_or_create(user=user)
-        self.stdout.write(f'  User: analyst / breathe2024  (token: {token.key})')
+        UserProfile.objects.get_or_create(user=user, defaults={'organization': org})
+        self.stdout.write(f'  User: analyst / breathe2024')

@@ -601,25 +601,24 @@ def normalize_batch(batch):
 
         norm_record.save()
         sr.validation_warnings = warnings
-        passed += 1
 
-        if warnings:
+        if not warnings:
+            sr.status = 'passed'
+            passed += 1
+        else:
             has_error = any('failed' in w or 'missing' in w or 'unparseable' in w for w in warnings)
             has_suspicious = any('suspicious' in w or 'estimated' in w or 'flagged' in w or 'mismatch' in w or 'unknown' in w for w in warnings)
 
             if has_error:
                 sr.status = 'failed'
                 sr.failure_reasons = warnings
-                passed -= 1
                 failed += 1
             elif has_suspicious:
                 sr.status = 'suspicious'
-                passed -= 1
                 suspicious += 1
             else:
                 sr.status = 'passed'
-        else:
-            sr.status = 'passed'
+                passed += 1
 
         sr.save()
 

@@ -1,9 +1,7 @@
 import csv
 import io
-import json
-import re
-from decimal import Decimal, InvalidOperation
-from datetime import datetime
+from decimal import Decimal
+from django.utils import timezone
 
 from django.db import models, transaction
 from django.db.models import Sum, Count
@@ -28,40 +26,49 @@ from .normalizer import normalize_batch
 
 
 class OrganizationViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Organization.objects.all()
     serializer_class = OrganizationSerializer
+
+    def get_queryset(self):
+        if self.request.organization:
+            return Organization.objects.filter(id=self.request.organization.id)
+        return Organization.objects.all()
 
 
 class DataSourceViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = DataSource.objects.all()
     serializer_class = DataSourceSerializer
 
     def get_queryset(self):
-        qs = super().get_queryset()
-        org_id = self.request.query_params.get('organization')
-        if org_id:
-            qs = qs.filter(organization_id=org_id)
+        qs = DataSource.objects.all()
+        if self.request.organization:
+            qs = qs.filter(organization=self.request.organization)
         return qs
 
 
 class IngestionBatchViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = IngestionBatch.objects.all()
     serializer_class = IngestionBatchSerializer
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = IngestionBatch.objects.all()
+        if self.request.organization:
+            qs = qs.filter(source__organization=self.request.organization)
         source_id = self.request.query_params.get('source')
         if source_id:
             qs = qs.filter(source_id=source_id)
         return qs
 
+    def _check_batch_org(self, batch):
+        if self.request.organization and batch.source.organization != self.request.organization:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Batch does not belong to your organization')
+
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         batch = self.get_object()
+        self._check_batch_org(batch)
         batch.status = 'approved'
         batch.save()
         NormalizedRecord.objects.filter(batch=batch, status='needs_review').update(
-            status='approved', reviewed_by=request.user.username, reviewed_at=datetime.now()
+            status='approved', reviewed_by=request.user.username, reviewed_at=timezone.now()
         )
         AuditLog.objects.create(
             organization=batch.source.organization,
@@ -76,6 +83,7 @@ class IngestionBatchViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['post'])
     def lock(self, request, pk=None):
         batch = self.get_object()
+        self._check_batch_org(batch)
         batch.status = 'locked'
         batch.save()
         NormalizedRecord.objects.filter(batch=batch).exclude(status='rejected').update(
@@ -93,11 +101,12 @@ class IngestionBatchViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class SourceRecordViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = SourceRecord.objects.all()
     serializer_class = SourceRecordSerializer
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = SourceRecord.objects.all()
+        if self.request.organization:
+            qs = qs.filter(batch__source__organization=self.request.organization)
         batch_id = self.request.query_params.get('batch')
         if batch_id:
             qs = qs.filter(batch_id=batch_id)
@@ -105,11 +114,12 @@ class SourceRecordViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class NormalizedRecordViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = NormalizedRecord.objects.all()
     serializer_class = NormalizedRecordSerializer
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = NormalizedRecord.objects.all()
+        if self.request.organization:
+            qs = qs.filter(organization=self.request.organization)
         batch_id = self.request.query_params.get('batch')
         status_filter = self.request.query_params.get('status')
         scope = self.request.query_params.get('scope')
@@ -149,15 +159,20 @@ class NormalizedRecordViewSet(viewsets.ReadOnlyModelViewSet):
 
         records = NormalizedRecord.objects.filter(id__in=record_ids)
         org = records.first().organization if records.exists() else None
+        if request.organization and org and org != request.organization:
+            return Response({'error': 'Records do not belong to your organization'}, status=status.HTTP_403_FORBIDDEN)
 
-        now = datetime.now()
+        now = timezone.now()
+        new_status = status_map[action]
         update_fields = {
-            'status': status_map[action],
+            'status': new_status,
             'reviewed_by': request.user.username,
             'reviewed_at': now,
         }
         if action == 'reject':
             update_fields['rejection_reason'] = reason
+
+        old_statuses = {r.id: r.status for r in records}
 
         records.update(**update_fields)
         records.update(version=models.F('version') + 1)
@@ -170,7 +185,8 @@ class NormalizedRecordViewSet(viewsets.ReadOnlyModelViewSet):
                     actor=request.user.username,
                     record_type='NormalizedRecord',
                     record_id=rid,
-                    description=reason if action == 'reject' else '',
+                    changes={'old_status': old_statuses.get(rid, 'unknown'), 'new_status': new_status},
+                    description=reason if action == 'reject' else f'Status changed from {old_statuses.get(rid, "unknown")} to {new_status}',
                 )
                 for rid in record_ids
             ]
@@ -180,14 +196,12 @@ class NormalizedRecordViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = AuditLog.objects.all()
     serializer_class = AuditLogSerializer
 
     def get_queryset(self):
-        qs = super().get_queryset()
-        org_id = self.request.query_params.get('organization')
-        if org_id:
-            qs = qs.filter(organization_id=org_id)
+        qs = AuditLog.objects.all()
+        if self.request.organization:
+            qs = qs.filter(organization=self.request.organization)
         return qs
 
 
@@ -211,9 +225,8 @@ class UnitConversionViewSet(viewsets.ReadOnlyModelViewSet):
 class AnalyticsViewSet(viewsets.ViewSet):
     def list(self, request):
         records = NormalizedRecord.objects.all()
-        org_id = request.query_params.get('organization')
-        if org_id:
-            records = records.filter(organization_id=org_id)
+        if request.organization:
+            records = records.filter(organization=request.organization)
         source_type = request.query_params.get('source_type')
         scope = request.query_params.get('scope')
         year = request.query_params.get('year')
@@ -277,9 +290,8 @@ class AnalyticsViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def dates(self, request):
         records = NormalizedRecord.objects.all()
-        org_id = request.query_params.get('organization')
-        if org_id:
-            records = records.filter(organization_id=org_id)
+        if request.organization:
+            records = records.filter(organization=request.organization)
         years = list(records.annotate(
             year=ExtractYear('activity_date')
         ).values('year').annotate(count=Count('id')).order_by('year'))
@@ -293,6 +305,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
 
 
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
+BATCH_SIZE = 500
 
 
 class UploadViewSet(viewsets.ViewSet):
@@ -303,6 +316,8 @@ class UploadViewSet(viewsets.ViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         source = DataSource.objects.get(id=serializer.validated_data['source_id'])
+        if request.organization and source.organization != request.organization:
+            return Response({'error': 'Source does not belong to your organization'}, status=status.HTTP_403_FORBIDDEN)
         file = serializer.validated_data['file']
 
         if file.size > MAX_UPLOAD_BYTES:
@@ -311,71 +326,79 @@ class UploadViewSet(viewsets.ViewSet):
                 status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             )
 
-        try:
-            decoded = file.read().decode('utf-8-sig')
-            reader = csv.DictReader(io.StringIO(decoded))
-            rows = list(reader)
-        except Exception as e:
-            return Response({'error': f'Failed to parse CSV: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if not rows:
-            return Response({'error': 'CSV file is empty'}, status=status.HTTP_400_BAD_REQUEST)
-
         expected_headers = {
             'sap_fuel': {'Material', 'Menge', 'MEINS', 'BUDAT', 'material_description', 'Plant'},
             'utility_electricity': {'Meter ID', 'TYPE', 'START DATE', 'END DATE', 'USAGE', 'UNITS'},
             'corporate_travel': {'Employee', 'ExpenseType', 'TransactionDate', 'Amount', 'Currency'},
         }
-        detected = set(reader.fieldnames or [])
-        expected = expected_headers.get(source.source_type, set())
-        if expected and not expected.intersection(detected):
-            return Response({
-                'error': f'CSV headers don\'t match expected format for {source.source_type}. '
-                         f'Expected at least one of: {", ".join(sorted(expected))}. '
-                         f'Got: {", ".join(sorted(detected)) or "none"}'
-            }, status=status.HTTP_400_BAD_REQUEST)
 
-        with transaction.atomic():
-            batch = IngestionBatch.objects.create(
-                source=source,
-                status='importing',
-                total_records=len(rows),
-                uploaded_by=request.user.username,
-            )
+        try:
+            decoded = file.read().decode('utf-8-sig')
+            reader = csv.DictReader(io.StringIO(decoded))
+            fieldnames = reader.fieldnames or []
+            detected = set(fieldnames)
+            expected = expected_headers.get(source.source_type, set())
+            if expected and not expected.intersection(detected):
+                return Response({
+                    'error': f'CSV headers don\'t match expected format for {source.source_type}. '
+                             f'Expected at least one of: {", ".join(sorted(expected))}. '
+                             f'Got: {", ".join(sorted(detected)) or "none"}'
+                }, status=status.HTTP_400_BAD_REQUEST)
 
-            source_records = []
-
-            for i, row in enumerate(rows):
-                raw_quantity = str(row.get('quantity', row.get('Menge', row.get('USAGE', ''))))
-                raw_unit = str(row.get('unit', row.get('MEINS', row.get('UNITS', ''))))
-                raw_date = str(row.get('date', row.get('BUDAT', row.get('START DATE', row.get('TransactionDate', '')))))
-                raw_desc = str(row.get('description', row.get('material_description', row.get('MAKTX', row.get('TYPE', '')))))
-
-                sr = SourceRecord(
-                    batch=batch,
-                    row_number=i + 1,
-                    raw_data=row,
-                    data_source=source.source_type,
-                    raw_quantity=raw_quantity,
-                    raw_unit=raw_unit,
-                    raw_date=raw_date,
-                    raw_description=raw_desc,
-                    status='staged',
+            with transaction.atomic():
+                batch = IngestionBatch.objects.create(
+                    source=source,
+                    status='importing',
+                    total_records=0,
+                    uploaded_by=request.user.username,
                 )
-                source_records.append(sr)
 
-            SourceRecord.objects.bulk_create(source_records)
+                source_records = []
+                total = 0
 
-            batch = IngestionBatch.objects.get(id=batch.id)
+                for i, row in enumerate(reader):
+                    total += 1
+                    raw_quantity = str(row.get('quantity', row.get('Menge', row.get('USAGE', ''))))
+                    raw_unit = str(row.get('unit', row.get('MEINS', row.get('UNITS', ''))))
+                    raw_date = str(row.get('date', row.get('BUDAT', row.get('START DATE', row.get('TransactionDate', '')))))
+                    raw_desc = str(row.get('description', row.get('material_description', row.get('MAKTX', row.get('TYPE', '')))))
 
-            result = normalize_batch(batch)
+                    sr = SourceRecord(
+                        batch=batch,
+                        row_number=i + 1,
+                        raw_data=row,
+                        data_source=source.source_type,
+                        raw_quantity=raw_quantity,
+                        raw_unit=raw_unit,
+                        raw_date=raw_date,
+                        raw_description=raw_desc,
+                        status='staged',
+                    )
+                    source_records.append(sr)
 
-            batch.total_records = result['total']
-            batch.passed_count = result['passed']
-            batch.failed_count = result['failed']
-            batch.suspicious_count = result['suspicious']
-            batch.status = 'staged'
-            batch.save()
+                    if len(source_records) >= BATCH_SIZE:
+                        SourceRecord.objects.bulk_create(source_records)
+                        source_records = []
+
+                if source_records:
+                    SourceRecord.objects.bulk_create(source_records)
+
+                if total == 0:
+                    return Response({'error': 'CSV file is empty'}, status=status.HTTP_400_BAD_REQUEST)
+
+                batch = IngestionBatch.objects.get(id=batch.id)
+
+                result = normalize_batch(batch)
+
+                batch.total_records = result['total']
+                batch.passed_count = result['passed']
+                batch.failed_count = result['failed']
+                batch.suspicious_count = result['suspicious']
+                batch.status = 'staged'
+                batch.save()
+
+        except Exception as e:
+            return Response({'error': f'Failed to parse CSV: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
         AuditLog.objects.create(
             organization=source.organization,
@@ -383,7 +406,7 @@ class UploadViewSet(viewsets.ViewSet):
             actor=request.user.username,
             record_type='IngestionBatch',
             record_id=batch.id,
-            description=f"Ingested {len(rows)} rows from {source.name}",
+            description=f"Ingested {total} rows from {source.name}",
         )
 
         return Response({

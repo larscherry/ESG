@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, setToken } from '../lib/api'
+import { api } from '../lib/api'
 
-export default function Login() {
+export default function Login({ onLogin }: { onLogin: (user: { id: number; username: string }) => void }) {
   const navigate = useNavigate()
-  const [username, setUsername] = useState('analyst')
-  const [password, setPassword] = useState('breathe2024')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -15,7 +15,7 @@ export default function Login() {
     setError('')
     try {
       const res = await api.login(username, password)
-      setToken(res.token)
+      onLogin(res.user)
       navigate('/')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed')
@@ -64,9 +64,6 @@ export default function Login() {
             {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
-        <p className="text-xs text-[#9ca3af] text-center mt-6">
-          Demo: <strong>analyst</strong> / <strong>breathe2024</strong>
-        </p>
       </div>
     </div>
   )

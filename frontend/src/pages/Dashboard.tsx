@@ -59,17 +59,6 @@ export default function Dashboard() {
     api.getAnalytics(params).then(setAnalytics).catch(() => {})
   }, [esgTab, sourceFilter, _sources])
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-[#1ea97c] border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-[#9ca3af]">Loading dashboard...</span>
-        </div>
-      </div>
-    )
-  }
-
   const totalRecords = batches.reduce((s, b) => s + b.total_records, 0)
   const totalFailed = batches.reduce((s, b) => s + b.failed_count, 0)
   const totalSuspicious = batches.reduce((s, b) => s + b.suspicious_count, 0)
@@ -100,6 +89,17 @@ export default function Dashboard() {
   const failRate = totalRecords > 0 ? Math.round((totalFailed / totalRecords) * 100) : 0
   const susRate = totalRecords > 0 ? Math.round((totalSuspicious / totalRecords) * 100) : 0
   const recordCount = analytics?.total?.total_count || 0
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-[#1ea97c] border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-[#9ca3af]">Loading dashboard...</span>
+        </div>
+      </div>
+    )
+  }
 
   const scopeColors: Record<number, string> = { 1: 'from-rose-500 to-pink-600', 2: 'from-blue-500 to-cyan-600', 3: 'from-amber-500 to-orange-600' }
   const scopeBgColors: Record<number, string> = { 1: 'bg-rose-100 text-rose-700', 2: 'bg-blue-100 text-blue-700', 3: 'bg-amber-100 text-amber-700' }

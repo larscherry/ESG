@@ -6,11 +6,11 @@ echo "=== Installing Node.js ==="
 export NVM_DIR="$HOME/.nvm"
 if [ -s "$NVM_DIR/nvm.sh" ]; then
   \. "$NVM_DIR/nvm.sh"
-  nvm install "${NODE_VERSION:-20}" > /dev/null
-  nvm use "${NODE_VERSION:-20}" > /dev/null
+  nvm install 22 > /dev/null
+  nvm use 22 > /dev/null
 else
   # Fallback: download Node directly
-  curl -fsSL https://nodejs.org/dist/v${NODE_VERSION:-22.14.0}/node-v${NODE_VERSION:-22.14.0}-linux-x64.tar.xz -o /tmp/node.tar.xz
+  curl -fsSL https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.xz -o /tmp/node.tar.xz
   mkdir -p /tmp/node
   tar -xf /tmp/node.tar.xz -C /tmp/node --strip-components=1
   export PATH="/tmp/node/bin:$PATH"
@@ -20,7 +20,8 @@ echo "Node: $(node -v)  npm: $(npm -v)"
 
 echo "=== Building frontend ==="
 cd frontend
-npm ci
+rm -rf node_modules package-lock.json
+npm install
 npm run build
 cd ..
 
